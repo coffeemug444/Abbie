@@ -39,15 +39,17 @@ void Abbie::playAgainst() {
             cout << "\33[2k\033[A\r";
          }
          game.printBoard();
-         sleep_for(400ms);
-         state = playBotMove(game);
-         for (int i = 0; i < 9; i++) {
-            // clear line and move up
-            cout << "\33[2k\033[A\r";
+         if (state == ONGOING) {
+            sleep_for(400ms);
+            state = playBotMove(game);
+            for (int i = 0; i < 9; i++) {
+               // clear line and move up
+               cout << "\33[2k\033[A\r";
+            }
+            game.printBoard();
+            cout << "\r                                                        \r";
+            cout << "Enter move: ";
          }
-         game.printBoard();
-         cout << "\r                                                        \r";
-         cout << "Enter move: ";
       }
    }
 
