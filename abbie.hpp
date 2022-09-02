@@ -8,17 +8,23 @@ const unsigned NUM_COLS = 8;
 const unsigned NUM_SQUARES = NUM_ROWS * NUM_COLS;
 const unsigned INPUT_SIZE = NUM_PIECES * NUM_SQUARES;
 
+
+
 class Abbie {
 private:
    std::random_device dev_;
    std::mt19937 rng_;
    BenBrain model_;
-   float EvaluateFEN(std::string FEN);
-
+   Mat modelInputFromFEN(std::string FEN);
+   Mat modelOutputFromVal(float val);
+   float evaluateFEN(std::string FEN);
+   Move getBotMove(std::string FEN, float& eval);
+   
 
 public:
    Abbie();
    void playAgainst();
-   GameState playBotMove(Chess& game);
+
+   void trainOneGame();
 
 };

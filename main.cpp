@@ -4,7 +4,9 @@
 int main() {
 
    Abbie bot = Abbie();
-
-   bot.playAgainst();
+   std::cout << "Beginning training" << std::endl;
+   bot.trainOneGame();
+   std::cout << "Training complete" << std::endl;
+   //bot.playAgainst();
 
 }
