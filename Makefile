@@ -14,12 +14,11 @@ $(ODIR)/%.o: %.cpp $(DEPS)
 $(ODIR)/opt%.o: %.cpp $(DEPS)
 	$(CC) -c -O3 -o $@ $< -I$(IDIR)/
 
-
 main: $(OBJ)
 	$(CC) -g -o $@ $^ -L$(LDIR) -lchess
 
-opt: $(OBJ)
-	$(CC) -O3 -o $@ $^ -L$(LDIR) -lchessopt
+opt: $(OBJ_OPT)
+	$(CC) -O3 -o $@ $^ -L$(LDIR) -lchessOpt
 
 .PHONY: all
 all:
