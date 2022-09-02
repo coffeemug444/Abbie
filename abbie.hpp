@@ -10,6 +10,8 @@ const unsigned INPUT_SIZE = NUM_PIECES * NUM_SQUARES;
 
 class Abbie {
 private:
+   std::random_device dev_;
+   std::mt19937 rng_;
    BenBrain model_;
    float EvaluateFEN(std::string FEN);
 

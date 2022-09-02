@@ -3,7 +3,7 @@
 
 int main() {
 
-   Abbie bot;
+   Abbie bot = Abbie();
 
    bot.playAgainst();
 
