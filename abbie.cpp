@@ -1,6 +1,7 @@
 #include "abbie.hpp"
 #include <chrono>
 #include <thread>
+#include <future>
 
 using namespace std::chrono_literals;
 using std::chrono::system_clock,
@@ -8,7 +9,8 @@ using std::chrono::system_clock,
       std::cin, std::cout,
       std::string,
       std::shared_ptr, std::make_shared, std::make_unique,
-      std::vector;
+      std::vector,
+      std::future;
 
 Abbie::Abbie() {
    rng_ = std::mt19937(dev_());
@@ -16,10 +18,11 @@ Abbie::Abbie() {
 }
 
 
-float Abbie::evaluateFEN(string FEN) {
+float Abbie::evaluateFEN(string FEN, BenBrain* model) {
    Mat input = modelInputFromFEN(FEN);
-   Mat output = model_.compute(input);
-   return output.getVal(0,0);
+   Mat output = model->compute(input);
+   float outval = output.getVal(0,0);
+   return outval;
 }
 
 Mat Abbie::modelInputFromFEN(string FEN) {
@@ -56,47 +59,86 @@ Mat Abbie::modelInputFromFEN(string FEN) {
       'q', 'Q',   // queen
       'k', 'K'    // king
    };
-   unsigned i = 0;
-   for(char piece: pieces) {
+   
+   for(unsigned pc = 0; pc < NUM_PIECES; pc++) {
       for (unsigned sq = 0; sq < NUM_SQUARES; sq++) {
-         model_input[i*NUM_SQUARES + sq] = piece == squares[sq];
+         float val = (pieces[pc] == squares[sq]) ? 1.f : 0.f;
+         model_input[pc*NUM_SQUARES + sq] = val;
       }
-      i++;
    }
    return Mat(INPUT_SIZE, 1, model_input);
 }
 
-float std_dev(vector<float> input) {
-   float sum = std::accumulate(std::begin(input), std::end(input), 0.0);
-   float m =  sum / input.size();
+float std_dev(float* input, unsigned len) {
+   float sum = 0;
+   for (unsigned i = 0; i < len; i++) {
+      sum += input[i];
+   }
+   float m =  sum / len;
 
    float accum = 0.0;
-   std::for_each (std::begin(input), std::end(input), [&](const float d) {
-      accum += (d - m) * (d - m);
-   });
+   for (unsigned i = 0; i < len; i++) {
+      accum += (input[i] - m) * (input[i] - m);
+   }
 
-   return sqrt(accum / (input.size()-1)) + 0.000001; // add small constant to std_dev in case all values are exactly the same
+   return sqrt(accum / (len-1)) + 0.000001; // add small constant to std_dev in case all values are exactly the same
 }
 
+
+void Abbie::evaluateFutureMove(string FEN, Move move, BenBrain* model, float* output) {
+      Board futureBoard(FEN);
+      futureBoard.doMove(move);
+      string futureFEN = futureBoard.genFEN();
+      float futureEval = evaluateFEN(futureFEN, model);
+      *output = futureEval;
+}
+
+
+void Abbie::getEvals(vector<Move> legalMoves, float* evaluations, BenBrain* model, string FEN) {
+   vector<future<void>> activePool {};
+
+   for (unsigned i = 0; i < legalMoves.size(); i++) {
+      while (activePool.size() >= 6) {
+         for (int i = 0; i < activePool.size(); i++) {
+            if(activePool[i].wait_for(0ms) == std::future_status::ready) {
+               activePool.erase(activePool.begin() + i);
+               i--;
+            }
+         }
+      }
+      activePool.push_back(std::async(evaluateFutureMove, FEN, legalMoves[i], model, evaluations + i));
+   }
+   for (auto& ftr: activePool) {
+      ftr.wait();
+   }
+}
+
+
 Move Abbie::getBotMove(string FEN, float& eval) {
-   vector<float> evaluations {};
    Board currentBoard = Board(FEN);
    vector<Move> legalMoves = currentBoard.getLegalMoves();
+   int num_moves = legalMoves.size();
+   float evaluations[num_moves];
 
    char player = FEN[FEN.find(' ') + 1];
    bool playingAsWhite = player == 'w';
 
+
+   getEvals(legalMoves, evaluations, &model_, FEN);
+
+/*
+   unsigned i = 0;
    for (auto move: legalMoves) {
       Board futureBoard(FEN);
       futureBoard.doMove(move);
       string futureFEN = futureBoard.genFEN();
-      float futureEval = evaluateFEN(futureFEN);
-      evaluations.push_back(futureEval);
+      evaluations[i] = evaluateFEN(futureFEN, &model_);
+      i++;
    }
-
+   */
    float best_evaluation = evaluations[0];
 
-   for (unsigned i = 1; i < evaluations.size(); i++) {
+   for (unsigned i = 1; i < num_moves; i++) {
       if (playingAsWhite) {
          if (evaluations[i] > best_evaluation) {
             best_evaluation = evaluations[i];
@@ -108,10 +150,10 @@ Move Abbie::getBotMove(string FEN, float& eval) {
       }
    }
 
-   float eval_std_dev = std_dev(evaluations);
-   vector<Move> bestMoves = {};
-   vector<float> bestEvals = {};
-   for (unsigned i = 1; i < evaluations.size(); i++) {
+   float eval_std_dev = std_dev(evaluations, legalMoves.size());
+   vector<Move> bestMoves {};
+   vector<float> bestEvals {};
+   for (unsigned i = 1; i < num_moves; i++) {
       if (playingAsWhite) {
          if ((evaluations[i] + eval_std_dev) > best_evaluation) {
             bestMoves.push_back(legalMoves[i]);
