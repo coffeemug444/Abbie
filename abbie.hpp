@@ -26,5 +26,6 @@ public:
    void playAgainst();
 
    void trainOneGame();
+   void trainOneBoard();
 
 };

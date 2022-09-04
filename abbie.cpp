@@ -132,6 +132,7 @@ Move Abbie::getBotMove(string FEN, float& eval) {
 }
 
 void Abbie::playAgainst() {
+   model_.save("model.csv");
    Chess game;
    game.printBoard();
    GameState state = ONGOING;
@@ -218,7 +219,6 @@ void Abbie::trainOneGame() {
    std::cout << "Game was " << FENs.size() << " moves long\n";
 
    for (int state = 0; state < FENs.size(); state++) {
-      std::cout << "Computing grads from board " << state << "\n";
       float eval_shouldBe = ending_eval - (state - (FENs.size()-1))*(starting_eval/(FENs.size()));
       Mat input = modelInputFromFEN(FENs[state]);
       Mat output = modelOutputFromVal(eval_shouldBe);
@@ -229,7 +229,6 @@ void Abbie::trainOneGame() {
          auto newWeightGrad = weightGrads[w] + nw[w];
          weightGrads[w] = newWeightGrad;
       }
-
       auto nb = model_.computeBiases(diffs);
       for (int b = 0; b < biasGrads.size(); b++) {
          auto newBiasGrad = biasGrads[b] + nb[b];
@@ -239,4 +238,55 @@ void Abbie::trainOneGame() {
 
    std::cout << "Adjusting weights and biases\n";
    model_.adjustWeightsAndBiases(weightGrads, biasGrads, 0.03, FENs.size());
+}
+
+
+void Abbie::trainOneBoard() {
+   Chess game;
+   float eval;
+
+   bool whitePlaying = true;
+   string FEN1 = game.getFEN();
+   Move move;
+   cout << "Finding first move\n";
+   move = getBotMove(FEN1, eval);
+   game.acceptMove(move);
+   string FEN2 = game.getFEN();
+   cout << "Finding second move\n";
+   move = getBotMove(FEN2, eval);
+   game.acceptMove(move);
+
+   vector<Mat> weightGrads = model_.weightsZero();
+   vector<Mat> biasGrads = model_.biasesZero();
+
+   unsigned board = 0;
+   for(auto FEN: {FEN1, FEN2}) {
+      board++;
+      float eval_shouldBe = 0.5;
+
+      Mat input = modelInputFromFEN(FEN);
+      Mat output = modelOutputFromVal(eval_shouldBe);
+      std::cout << "calculating diffs for board " << board << "\n";
+      auto diffs = model_.backPropagate(input, output);
+
+      std::cout << "computing weight gradients\n";
+      auto nw = model_.computeWeights(diffs);
+      std::cout << "adding weight gradients to gradient sum\n";
+      for (int w = 0; w < weightGrads.size(); w++) {
+         auto newWeightGrad = weightGrads[w] + nw[w];
+         weightGrads[w] = newWeightGrad;
+      }
+
+      std::cout << "computing bias gradients\n";
+      auto nb = model_.computeBiases(diffs);
+      std::cout << "adding bias gradients to gradient sum\n";
+      for (int b = 0; b < biasGrads.size(); b++) {
+         auto newBiasGrad = biasGrads[b] + nb[b];
+         biasGrads[b] = newBiasGrad;
+      }
+   }
+
+
+   std::cout << "Adjusting weights and biases\n";
+   model_.adjustWeightsAndBiases(weightGrads, biasGrads, 0.03, 2);
 }
