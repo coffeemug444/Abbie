@@ -12,9 +12,10 @@ int main() {
    
    bot.saveModel("models/model_0.csv");
 
-   std::cout << "\n\n\n\nGame 0";
+   std::cout << "\n\n\n\n";
 
    for (unsigned i = 0; i < epoch_length*epochs; i++) {
+      std::cout << "Game " << i;
       std::cout << "\033[F\33[2K\033[F\33[2K\033[F\33[2K\033[F\33[2K";
       bot.trainOneGame();
       if (i != 0 && i % epoch_length == 0)  {
