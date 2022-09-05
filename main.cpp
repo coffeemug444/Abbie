@@ -5,35 +5,24 @@
 int main() {
 
    Board board;
-   Abbie bot("models/model_15.csv");
+   Abbie bot;
+   
+   int epoch_length = 5;
+   int epochs = 20;
+   
+   bot.saveModel("models/model_0.csv");
 
+   std::cout << "\n\n\n\nGame 0";
 
-   float eval;
-   Move move;
-
-   while (true) {
-      move = bot.getBotMove(board.genFEN(), eval);
-      std::cout << eval << ", ";
-      board.doMove(move);
-      auto moves = board.getLegalMoves().size();
-      std::cout << moves << " legal moves available" << std::endl;
-      if (moves == 0) {
-         break;
-      }
-
-   }
-
-   return 0;
-
-/*
-   for (unsigned i = 0; i < 20; i++) {
-      if (i % 5 == 0)  {
+   for (unsigned i = 0; i < epoch_length*epochs; i++) {
+      std::cout << "\033[F\33[2K\033[F\33[2K\033[F\33[2K\033[F\33[2K";
+      bot.trainOneGame();
+      if (i != 0 && i % epoch_length == 0)  {
          std::stringstream outpath;
          outpath << "models/model_" << i << ".csv";
          bot.saveModel(outpath.str());
       }
-      bot.trainOneGame();
    }
-   bot.saveModel("models/model_20.csv");
-   */
+   
+   return 0;
 }

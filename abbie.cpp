@@ -14,7 +14,7 @@ using std::chrono::system_clock,
 
 Abbie::Abbie() {
    rng_ = std::mt19937(dev_());
-   model_ = BenBrain({INPUT_SIZE,100,100,1}, 'r');
+   model_ = BenBrain({INPUT_SIZE,2048,2048,1}, 'r');
 }
 
 Abbie::Abbie(std::string modelPath) {
