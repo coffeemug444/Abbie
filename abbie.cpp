@@ -14,7 +14,16 @@ using std::chrono::system_clock,
 
 Abbie::Abbie() {
    rng_ = std::mt19937(dev_());
-   model_ = BenBrain({INPUT_SIZE,2048,2048,1}, 'r');
+   model_ = BenBrain({INPUT_SIZE,100,100,1}, 'r');
+}
+
+Abbie::Abbie(std::string modelPath) {
+   rng_ = std::mt19937(dev_());
+   model_ = BenBrain(modelPath);
+}
+
+void Abbie::saveModel(std::string savePath) {
+   model_.save(savePath);
 }
 
 
@@ -228,7 +237,7 @@ void Abbie::trainOneGame() {
    int turnCount= 0;
    while (gameState == ONGOING) {
       turnCount++;
-      std::cout << "turn " << turnCount << "\n";
+      std::cout << "\033[Fturn " << turnCount << "\n";
       string FEN = game.getFEN();
       FENs.push_back(FEN);
       float eval;
@@ -256,6 +265,9 @@ void Abbie::trainOneGame() {
 
    for (int state = 0; state < FENs.size(); state++) {
       float eval_shouldBe = ending_eval - (state - (FENs.size()-1))*(starting_eval/(FENs.size()));
+      if (state != 0) {
+         cout << "\033[F";
+      }
       cout << "Computing weight and bias gradients for board " << state << "\n";
       Mat input = modelInputFromFEN(FENs[state]);
       Mat output = modelOutputFromVal(eval_shouldBe);

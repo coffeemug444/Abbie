@@ -17,16 +17,20 @@ private:
    static Mat modelInputFromFEN(std::string FEN);
    static Mat modelOutputFromVal(float val);
    static float evaluateFEN(std::string FEN, BenBrain* model);
-   Move getBotMove(std::string FEN, float& eval);
    static void evaluateFutureMove(std::string FEN, Move move, BenBrain* model, float* output);
    static void getEvals(std::vector<Move> legalMoves, float* evaluations, BenBrain* model, std::string FEN);
+
    
 
 public:
    Abbie();
+   Abbie(std::string modelPath);
    void playAgainst();
+   Move getBotMove(std::string FEN, float& eval);
 
    void trainOneGame();
    void trainOneBoard();
+
+   void saveModel(std::string savePath);
 
 };
