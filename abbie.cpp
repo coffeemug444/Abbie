@@ -90,6 +90,7 @@ void Abbie::evaluateFutureMove(string FEN, Move move, BenBrain* model, float* ou
       futureBoard.doMove(move);
       string futureFEN = futureBoard.genFEN();
       float futureEval = evaluateFEN(futureFEN, model);
+      assert(!std::isnan(futureEval));
       *output = futureEval;
 }
 
@@ -118,24 +119,17 @@ Move Abbie::getBotMove(string FEN, float& eval) {
    Board currentBoard = Board(FEN);
    vector<Move> legalMoves = currentBoard.getLegalMoves();
    int num_moves = legalMoves.size();
+   assert(num_moves != 0);
+   if (num_moves == 1) {
+      return legalMoves[0];
+   }
    float evaluations[num_moves];
 
    char player = FEN[FEN.find(' ') + 1];
    bool playingAsWhite = player == 'w';
 
-
    getEvals(legalMoves, evaluations, &model_, FEN);
 
-/*
-   unsigned i = 0;
-   for (auto move: legalMoves) {
-      Board futureBoard(FEN);
-      futureBoard.doMove(move);
-      string futureFEN = futureBoard.genFEN();
-      evaluations[i] = evaluateFEN(futureFEN, &model_);
-      i++;
-   }
-   */
    float best_evaluation = evaluations[0];
 
    for (unsigned i = 1; i < num_moves; i++) {
@@ -153,7 +147,7 @@ Move Abbie::getBotMove(string FEN, float& eval) {
    float eval_std_dev = std_dev(evaluations, legalMoves.size());
    vector<Move> bestMoves {};
    vector<float> bestEvals {};
-   for (unsigned i = 1; i < num_moves; i++) {
+   for (unsigned i = 0; i < num_moves; i++) {
       if (playingAsWhite) {
          if ((evaluations[i] + eval_std_dev) > best_evaluation) {
             bestMoves.push_back(legalMoves[i]);
@@ -262,6 +256,7 @@ void Abbie::trainOneGame() {
 
    for (int state = 0; state < FENs.size(); state++) {
       float eval_shouldBe = ending_eval - (state - (FENs.size()-1))*(starting_eval/(FENs.size()));
+      cout << "Computing weight and bias gradients for board " << state << "\n";
       Mat input = modelInputFromFEN(FENs[state]);
       Mat output = modelOutputFromVal(eval_shouldBe);
       auto diffs = model_.backPropagate(input, output);
