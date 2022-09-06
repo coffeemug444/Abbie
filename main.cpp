@@ -4,8 +4,13 @@
 
 int main() {
 
-   Board board;
    Abbie bot;
+
+   //bot.playAgainst();
+
+   
+   Board board;
+
    
    int epoch_length = 5;
    int epochs = 20;
@@ -24,6 +29,7 @@ int main() {
          bot.saveModel(outpath.str());
       }
    }
+   
    
    return 0;
 }

@@ -14,7 +14,7 @@ using std::chrono::system_clock,
 
 Abbie::Abbie() {
    rng_ = std::mt19937(dev_());
-   model_ = BenBrain({INPUT_SIZE,2048,2048,1}, 'r');
+   model_ = BenBrain({INPUT_SIZE,2048,2048,1}, 'h');
 }
 
 Abbie::Abbie(std::string modelPath) {
@@ -29,7 +29,7 @@ void Abbie::saveModel(std::string savePath) {
 
 float Abbie::evaluateFEN(string FEN, BenBrain* model) {
    Mat input = modelInputFromFEN(FEN);
-   Mat output = model->compute(input);
+   Mat output = model->compute(input, BenBrain::leaky_reLU_act);
    float outval = output.getVal(0,0);
    return outval;
 }
@@ -103,19 +103,23 @@ void Abbie::evaluateFutureMove(string FEN, Move move, BenBrain* model, float* ou
       *output = futureEval;
 }
 
+void shrinkActivePoolToSize(vector<future<void>>& activePool, unsigned n) {
+   while (activePool.size() >= 6) {
+      for (int i = 0; i < activePool.size(); i++) {
+         if(activePool[i].wait_for(0ms) == std::future_status::ready) {
+            activePool.erase(activePool.begin() + i);
+            i--;
+         }
+      }
+   }
+}
+
 
 void Abbie::getEvals(vector<Move> legalMoves, float* evaluations, BenBrain* model, string FEN) {
    vector<future<void>> activePool {};
 
    for (unsigned i = 0; i < legalMoves.size(); i++) {
-      while (activePool.size() >= 6) {
-         for (int i = 0; i < activePool.size(); i++) {
-            if(activePool[i].wait_for(0ms) == std::future_status::ready) {
-               activePool.erase(activePool.begin() + i);
-               i--;
-            }
-         }
-      }
+      shrinkActivePoolToSize(activePool, 6);
       activePool.push_back(std::async(evaluateFutureMove, FEN, legalMoves[i], model, evaluations + i));
    }
    for (auto& ftr: activePool) {
@@ -177,7 +181,6 @@ Move Abbie::getBotMove(string FEN, float& eval) {
 }
 
 void Abbie::playAgainst() {
-   model_.save("model.csv");
    Chess game;
    game.printBoard();
    GameState state = ONGOING;
@@ -214,7 +217,7 @@ void Abbie::playAgainst() {
             }
             game.printBoard();
             cout << "\r                                                        \r";
-            cout << "Enter move: ";
+            cout << "Board was rated " << eval << ". Enter move: ";
          }
       }
    }
@@ -261,17 +264,17 @@ void Abbie::trainOneGame() {
    vector<Mat> weightGrads = model_.weightsZero();
    vector<Mat> biasGrads = model_.biasesZero();
 
-   std::cout << "Game was " << FENs.size() << " moves long\n";
+   std::cout << "Game was " << FENs.size() - 1 << " moves long\n";
 
    for (int state = 0; state < FENs.size(); state++) {
-      float eval_shouldBe = ending_eval - (state - (FENs.size()-1))*(starting_eval/(FENs.size()));
+      float eval_shouldBe = ((ending_eval-starting_eval)/FENs.size())*state + starting_eval;
       if (state != 0) {
          cout << "\033[F";
       }
       cout << "Computing weight and bias gradients for board " << state << "\n";
       Mat input = modelInputFromFEN(FENs[state]);
       Mat output = modelOutputFromVal(eval_shouldBe);
-      auto diffs = model_.backPropagate(input, output);
+      auto diffs = model_.backPropagate(input, output, BenBrain::leaky_reLU_act, BenBrain::leaky_reLU_inv);
 
       auto nw = model_.computeWeights(diffs);
       for (int w = 0; w < weightGrads.size(); w++) {
@@ -316,7 +319,7 @@ void Abbie::trainOneBoard() {
       Mat input = modelInputFromFEN(FEN);
       Mat output = modelOutputFromVal(eval_shouldBe);
       std::cout << "calculating diffs for board " << board << "\n";
-      auto diffs = model_.backPropagate(input, output);
+      auto diffs = model_.backPropagate(input, output, BenBrain::leaky_reLU_act, BenBrain::leaky_reLU_inv);
 
       std::cout << "computing weight gradients\n";
       auto nw = model_.computeWeights(diffs);
@@ -337,5 +340,5 @@ void Abbie::trainOneBoard() {
 
 
    std::cout << "Adjusting weights and biases\n";
-   model_.adjustWeightsAndBiases(weightGrads, biasGrads, 0.03, 2);
+   model_.adjustWeightsAndBiases(weightGrads, biasGrads, 0.003, 2);
 }
