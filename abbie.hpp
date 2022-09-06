@@ -1,6 +1,7 @@
 #include "chess/chess.hpp"
 #include "benBrain/benBrain.hpp"
 #include <iostream>
+#include <mutex>
 
 const unsigned NUM_PIECES = 12;
 const unsigned NUM_ROWS = 8;
@@ -25,8 +26,8 @@ private:
       unsigned state, 
       float starting_eval, 
       float ending_eval, 
-      std::vector<Mat>* weightGrads,
-      std::vector<Mat>* biasGrads
+      std::vector<Mat>* weightGrads, std::vector<std::shared_ptr<std::mutex>>* w_mtx,
+      std::vector<Mat>* biasGrads, std::vector<std::shared_ptr<std::mutex>>* b_mtx
    );
 
    

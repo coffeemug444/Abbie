@@ -2,7 +2,6 @@
 #include <chrono>
 #include <thread>
 #include <future>
-#include <mutex>
 
 using namespace std::chrono_literals;
 using std::chrono::system_clock,
@@ -236,8 +235,8 @@ void Abbie::compute_W_B_forState(
       unsigned state, 
       float starting_eval, 
       float ending_eval, 
-      vector<Mat>* weightGrads,
-      vector<Mat>* biasGrads
+      vector<Mat>* weightGrads, vector<std::shared_ptr<std::mutex>>* w_mtx,
+      vector<Mat>* biasGrads, vector<std::shared_ptr<std::mutex>>* b_mtx
    ) {
    float eval_shouldBe = ((ending_eval-starting_eval)/(*FENs).size())*state + starting_eval;
    Mat input = modelInputFromFEN((*FENs)[state]);
@@ -249,13 +248,17 @@ void Abbie::compute_W_B_forState(
 
    auto nw = (*model).computeWeights(diffs, as);
    for (int w = 0; w < (*weightGrads).size(); w++) {
-      auto newWeightGrad = (*weightGrads)[w] + nw[w];
-      (*weightGrads)[w] = newWeightGrad;
+      (*w_mtx)[w]->lock();
+         auto newWeightGrad = (*weightGrads)[w] + nw[w];
+         (*weightGrads)[w] = newWeightGrad;
+      (*w_mtx)[w]->unlock();
    }
    auto nb = (*model).computeBiases(diffs);
    for (int b = 0; b < (*biasGrads).size(); b++) {
-      auto newBiasGrad = (*biasGrads)[b] + nb[b];
-      (*biasGrads)[b] = newBiasGrad;
+      (*b_mtx)[b]->lock();
+         auto newBiasGrad = (*biasGrads)[b] + nb[b];
+         (*biasGrads)[b] = newBiasGrad;
+      (*b_mtx)[b]->unlock();
    }
 }
 
@@ -289,11 +292,14 @@ void Abbie::trainOneGame() {
       ending_eval = 0.5f;
    }
 
-
-   std::mutex w_mtx;
-   std::mutex b_mtx;
+   vector<std::shared_ptr<std::mutex>> w_mtx;
+   vector<std::shared_ptr<std::mutex>> b_mtx;
    vector<Mat> weightGrads = model_.weightsZero();
    vector<Mat> biasGrads = model_.biasesZero();
+   for (unsigned i = 0; i < weightGrads.size(); i++) {
+      w_mtx.push_back(make_shared<std::mutex>());
+      b_mtx.push_back(make_shared<std::mutex>());
+   }
 
    std::cout << "Game was " << FENs.size() - 1 << " moves long\n";
    std::cout << "Computing weight and bias gradients for state 0\n";
@@ -301,7 +307,7 @@ void Abbie::trainOneGame() {
    vector<future<void>> activePool {};
    for (unsigned state = 0; state < FENs.size(); state++) {
       shrinkActivePoolToSize(activePool, 6);
-      activePool.push_back(std::async(compute_W_B_forState, &model_, &FENs, state, starting_eval, ending_eval, &weightGrads, &biasGrads));
+      activePool.push_back(std::async(compute_W_B_forState, &model_, &FENs, state, starting_eval, ending_eval, &weightGrads, &w_mtx, &biasGrads, &b_mtx));
       std::cout << "\033[F\33[2KComputing weight and bias gradients for state " << state << std::endl;
    }
 
