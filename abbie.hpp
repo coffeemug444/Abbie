@@ -19,6 +19,15 @@ private:
    static float evaluateFEN(std::string FEN, BenBrain* model);
    static void evaluateFutureMove(std::string FEN, Move move, BenBrain* model, float* output);
    static void getEvals(std::vector<Move> legalMoves, float* evaluations, BenBrain* model, std::string FEN);
+   static void compute_W_B_forState(
+      BenBrain* model, 
+      std::vector<std::string>* FENs, 
+      unsigned state, 
+      float starting_eval, 
+      float ending_eval, 
+      std::vector<Mat>* weightGrads,
+      std::vector<Mat>* biasGrads
+   );
 
    
 

@@ -8,7 +8,6 @@ int main() {
 
    //bot.playAgainst();
 
-   
    Board board;
 
    
@@ -19,15 +18,18 @@ int main() {
 
    std::cout << "\n\n\n\n";
 
-   for (unsigned i = 0; i < epoch_length*epochs; i++) {
+   unsigned i = 1;
+
+   while(true) {
       std::cout << "Game " << i;
       std::cout << "\033[F\33[2K\033[F\33[2K\033[F\33[2K\033[F\33[2K";
       bot.trainOneGame();
-      if (i != 0 && i % epoch_length == 0)  {
+      if (i % epoch_length == 0)  {
          std::stringstream outpath;
          outpath << "models/model_" << i << ".csv";
          bot.saveModel(outpath.str());
       }
+      i++;
    }
    
    

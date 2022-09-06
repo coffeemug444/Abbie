@@ -2,6 +2,7 @@
 #include <chrono>
 #include <thread>
 #include <future>
+#include <mutex>
 
 using namespace std::chrono_literals;
 using std::chrono::system_clock,
@@ -229,6 +230,35 @@ Mat Abbie::modelOutputFromVal(float val) {
    return Mat(1,1,output);
 }
 
+void Abbie::compute_W_B_forState(
+      BenBrain* model, 
+      vector<string>* FENs, 
+      unsigned state, 
+      float starting_eval, 
+      float ending_eval, 
+      vector<Mat>* weightGrads,
+      vector<Mat>* biasGrads
+   ) {
+   float eval_shouldBe = ((ending_eval-starting_eval)/(*FENs).size())*state + starting_eval;
+   Mat input = modelInputFromFEN((*FENs)[state]);
+   Mat output = modelOutputFromVal(eval_shouldBe);
+   vector<Mat> diffs;
+   vector<Mat> as;
+   
+   (*model).backPropagate(input, output, diffs, as, BenBrain::leaky_reLU_act, BenBrain::leaky_reLU_inv);
+
+   auto nw = (*model).computeWeights(diffs, as);
+   for (int w = 0; w < (*weightGrads).size(); w++) {
+      auto newWeightGrad = (*weightGrads)[w] + nw[w];
+      (*weightGrads)[w] = newWeightGrad;
+   }
+   auto nb = (*model).computeBiases(diffs);
+   for (int b = 0; b < (*biasGrads).size(); b++) {
+      auto newBiasGrad = (*biasGrads)[b] + nb[b];
+      (*biasGrads)[b] = newBiasGrad;
+   }
+}
+
 void Abbie::trainOneGame() {
    Chess game;
    GameState gameState = ONGOING;
@@ -260,32 +290,23 @@ void Abbie::trainOneGame() {
    }
 
 
-
+   std::mutex w_mtx;
+   std::mutex b_mtx;
    vector<Mat> weightGrads = model_.weightsZero();
    vector<Mat> biasGrads = model_.biasesZero();
 
    std::cout << "Game was " << FENs.size() - 1 << " moves long\n";
+   std::cout << "Computing weight and bias gradients for state 0\n";
 
-   for (int state = 0; state < FENs.size(); state++) {
-      float eval_shouldBe = ((ending_eval-starting_eval)/FENs.size())*state + starting_eval;
-      if (state != 0) {
-         cout << "\033[F";
-      }
-      cout << "Computing weight and bias gradients for board " << state << "\n";
-      Mat input = modelInputFromFEN(FENs[state]);
-      Mat output = modelOutputFromVal(eval_shouldBe);
-      auto diffs = model_.backPropagate(input, output, BenBrain::leaky_reLU_act, BenBrain::leaky_reLU_inv);
+   vector<future<void>> activePool {};
+   for (unsigned state = 0; state < FENs.size(); state++) {
+      shrinkActivePoolToSize(activePool, 6);
+      activePool.push_back(std::async(compute_W_B_forState, &model_, &FENs, state, starting_eval, ending_eval, &weightGrads, &biasGrads));
+      std::cout << "\033[F\33[2KComputing weight and bias gradients for state " << state << std::endl;
+   }
 
-      auto nw = model_.computeWeights(diffs);
-      for (int w = 0; w < weightGrads.size(); w++) {
-         auto newWeightGrad = weightGrads[w] + nw[w];
-         weightGrads[w] = newWeightGrad;
-      }
-      auto nb = model_.computeBiases(diffs);
-      for (int b = 0; b < biasGrads.size(); b++) {
-         auto newBiasGrad = biasGrads[b] + nb[b];
-         biasGrads[b] = newBiasGrad;
-      }
+   for (auto& ftr: activePool) {
+      ftr.wait();
    }
 
    std::cout << "Adjusting weights and biases\n";
@@ -319,10 +340,12 @@ void Abbie::trainOneBoard() {
       Mat input = modelInputFromFEN(FEN);
       Mat output = modelOutputFromVal(eval_shouldBe);
       std::cout << "calculating diffs for board " << board << "\n";
-      auto diffs = model_.backPropagate(input, output, BenBrain::leaky_reLU_act, BenBrain::leaky_reLU_inv);
+      vector<Mat> diffs;
+      vector<Mat> as;
+      model_.backPropagate(input, output, diffs, as, BenBrain::leaky_reLU_act, BenBrain::leaky_reLU_inv);
 
       std::cout << "computing weight gradients\n";
-      auto nw = model_.computeWeights(diffs);
+      auto nw = model_.computeWeights(diffs, as);
       std::cout << "adding weight gradients to gradient sum\n";
       for (int w = 0; w < weightGrads.size(); w++) {
          auto newWeightGrad = weightGrads[w] + nw[w];
