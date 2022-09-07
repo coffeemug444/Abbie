@@ -112,7 +112,17 @@ float std_dev(float *input, unsigned len)
 void Abbie::evaluateFutureMove(string FEN, Move move, BenBrain *model, float *output)
 {
    Board futureBoard(FEN);
-   futureBoard.doMove(move);
+   auto result = futureBoard.doMove(move);
+   if (futureBoard.kingIsInCheck()) {
+      if (futureBoard.getLegalMoves().size() == 0) {
+         if (move.piece.color == WHITE) {
+            *output = 1.f;
+         } else {
+            *output = 0.f;
+         }
+         return;
+      }
+   }
    string futureFEN = futureBoard.genFEN();
    float futureEval = evaluateFEN(futureFEN, model);
    assert(!std::isnan(futureEval));
