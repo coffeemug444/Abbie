@@ -17,7 +17,7 @@ int main() {
    unsigned i = 0;
    if (iterations.size() != 0) {
       std::sort(iterations.begin(), iterations.end());
-      unsigned i = iterations.back();
+      i = iterations.back();
       std::stringstream ss;
       ss << "models/model_" << i << ".csv";
       Abbie bot(ss.str());
