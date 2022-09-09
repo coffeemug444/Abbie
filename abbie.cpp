@@ -131,7 +131,7 @@ void Abbie::evaluateFutureMove(string FEN, Move move, BenBrain *model, float *ou
 
 void shrinkActivePoolToSize(vector<future<void>> &activePool, unsigned n)
 {
-   while (activePool.size() >= 6)
+   while (activePool.size() > n)
    {
       for (int i = 0; i < activePool.size(); i++)
       {
