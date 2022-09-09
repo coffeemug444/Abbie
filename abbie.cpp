@@ -129,33 +129,11 @@ void Abbie::evaluateFutureMove(string FEN, Move move, BenBrain *model, float *ou
    *output = futureEval;
 }
 
-void shrinkActivePoolToSize(vector<future<void>> &activePool, unsigned n)
-{
-   while (activePool.size() > n)
-   {
-      for (int i = 0; i < activePool.size(); i++)
-      {
-         if (activePool[i].wait_for(0ms) == std::future_status::ready)
-         {
-            activePool.erase(activePool.begin() + i);
-            i--;
-         }
-      }
-   }
-}
-
 void Abbie::getEvals(vector<Move> legalMoves, float *evaluations, BenBrain *model, string FEN)
 {
-   vector<future<void>> activePool{};
-
    for (unsigned i = 0; i < legalMoves.size(); i++)
    {
-      shrinkActivePoolToSize(activePool, 6);
-      activePool.push_back(std::async(evaluateFutureMove, FEN, legalMoves[i], model, evaluations + i));
-   }
-   for (auto &ftr : activePool)
-   {
-      ftr.wait();
+      evaluateFutureMove( FEN, legalMoves[i], model, evaluations + i);
    }
 }
 
@@ -285,37 +263,32 @@ Mat Abbie::modelOutputFromVal(float val)
 }
 
 void Abbie::compute_W_B_forState(
-    BenBrain *model,
-    vector<string> *FENs,
+    vector<string>& FENs,
     unsigned state,
     float starting_eval,
     float ending_eval,
-    vector<Mat> *weightGrads, vector<std::shared_ptr<std::mutex>> *w_mtx,
-    vector<Mat> *biasGrads, vector<std::shared_ptr<std::mutex>> *b_mtx)
+    vector<Mat>& weightGrads,
+    vector<Mat>& biasGrads)
 {
-   float eval_shouldBe = ((ending_eval - starting_eval) / (*FENs).size()) * state + starting_eval;
-   Mat input = modelInputFromFEN((*FENs)[state]);
+   float eval_shouldBe = ((ending_eval - starting_eval) / FENs.size()) * state + starting_eval;
+   Mat input = modelInputFromFEN(FENs[state]);
    Mat output = modelOutputFromVal(eval_shouldBe);
    vector<Mat> diffs;
    vector<Mat> as;
 
-   (*model).backPropagate(input, output, diffs, as, BenBrain::leaky_reLU_act, BenBrain::leaky_reLU_inv);
+   model_.backPropagate(input, output, diffs, as, BenBrain::leaky_reLU_act, BenBrain::leaky_reLU_inv);
 
-   auto nw = (*model).computeWeights(diffs, as);
-   for (int w = 0; w < (*weightGrads).size(); w++)
+   auto nw = model_.computeWeights(diffs, as);
+   for (int w = 0; w < weightGrads.size(); w++)
    {
-      (*w_mtx)[w]->lock();
-      auto newWeightGrad = (*weightGrads)[w] + nw[w];
-      (*weightGrads)[w] = newWeightGrad;
-      (*w_mtx)[w]->unlock();
+      auto newWeightGrad = weightGrads[w] + nw[w];
+      weightGrads[w] = newWeightGrad;
    }
-   auto nb = (*model).computeBiases(diffs);
-   for (int b = 0; b < (*biasGrads).size(); b++)
+   auto nb = model_.computeBiases(diffs);
+   for (int b = 0; b < biasGrads.size(); b++)
    {
-      (*b_mtx)[b]->lock();
-      auto newBiasGrad = (*biasGrads)[b] + nb[b];
-      (*biasGrads)[b] = newBiasGrad;
-      (*b_mtx)[b]->unlock();
+      auto newBiasGrad = biasGrads[b] + nb[b];
+      biasGrads[b] = newBiasGrad;
    }
 }
 
@@ -367,17 +340,10 @@ void Abbie::trainOneGame()
    std::cout << "Game was " << FENs.size() - 1 << " moves long\n";
    std::cout << "Computing weight and bias gradients for state 0\n";
 
-   vector<future<void>> activePool{};
    for (unsigned state = 0; state < FENs.size(); state++)
    {
-      shrinkActivePoolToSize(activePool, 6);
-      activePool.push_back(std::async(compute_W_B_forState, &model_, &FENs, state, starting_eval, ending_eval, &weightGrads, &w_mtx, &biasGrads, &b_mtx));
+      compute_W_B_forState( FENs, state, starting_eval, ending_eval, weightGrads, biasGrads);
       std::cout << "\033[F\33[2KComputing weight and bias gradients for state " << state << std::endl;
-   }
-
-   for (auto &ftr : activePool)
-   {
-      ftr.wait();
    }
 
    std::cout << "Adjusting weights and biases\n";

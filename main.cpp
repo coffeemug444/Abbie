@@ -5,7 +5,6 @@
 namespace fs = std::filesystem;
 
 int main() {
-
    std::string path = "models";
    std::vector<int> iterations;
    for (const auto & entry : fs::directory_iterator(path)) {
@@ -13,19 +12,27 @@ int main() {
       pathstring = pathstring.substr(pathstring.find('_') + 1, pathstring.find('.'));
       iterations.push_back(std::stoi(pathstring));
    }
-   std::sort(iterations.begin(), iterations.end());
 
-   unsigned i = iterations.back();
-   std::stringstream ss;
-   ss << "models/model_" << i << ".csv";
+   Abbie bot;
+   unsigned i = 0;
+   if (iterations.size() != 0) {
+      std::sort(iterations.begin(), iterations.end());
+      unsigned i = iterations.back();
+      std::stringstream ss;
+      ss << "models/model_" << i << ".csv";
+      Abbie bot(ss.str());
+   } else {
+      std::stringstream outpath;
+      outpath << "models/model_" << i << ".csv";
+      bot.saveModel(outpath.str());
+   }
 
-   Abbie bot(ss.str());
 
    //bot.playAgainst();
 
    Board board;
    
-   int epoch_length = 5;
+   int epoch_length = 100;
 
    std::cout << "\n\n\n\n";
 
@@ -41,6 +48,5 @@ int main() {
          bot.saveModel(outpath.str());
       }
    }
-   
    return 0;
 }
