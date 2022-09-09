@@ -15,10 +15,10 @@ $(ODIR)/opt%.o: %.cpp $(DEPS)
 	$(CC) -c -O3 -o $@ $< -I$(IDIR)/
 
 main: $(OBJ)
-	$(CC) -g -march=native -o $@ $^ -L$(LDIR) -ffast-math -fopenmp -lchess -lbenBrain -lbenMat
+	$(CC) -g -march=native -o $@ $^ -L$(LDIR) -ffast-math -fopenmp -lchess -lbenBrain -lbenMat -lOpenCL
 
 opt: $(OBJ_OPT)
-	$(CC) -O3 -march=native -o $@ $^ -L$(LDIR) -ffast-math -fopenmp -lchessOpt -lbenBrainOpt -lbenMat
+	$(CC) -O3 -march=native -o $@ $^ -L$(LDIR) -ffast-math -fopenmp -lchessOpt -lbenBrainOpt -lbenMat -lOpenCL
 
 .PHONY: all
 all:
