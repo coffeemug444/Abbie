@@ -319,7 +319,13 @@ void Abbie::trainOneGame()
    float ending_eval;
    if (gameState == CHECKMATE)
    {
-      ending_eval = (whitePlaying ? 1.f : 0.f);
+      if (whitePlaying) {
+         // white is playing but is in checkmate, black wins
+         ending_eval = 0.f;
+      } else {
+         // black is playing but is in checkmate, white wins
+         ending_eval = 1.f;
+      }
    }
    else
    {
