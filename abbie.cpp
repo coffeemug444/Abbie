@@ -265,12 +265,22 @@ Mat Abbie::modelOutputFromVal(float val)
 void Abbie::compute_W_B_forState(
     vector<string>& FENs,
     unsigned state,
-    float starting_eval,
-    float ending_eval,
+    float S,
+    float E,
     vector<Mat>& weightGrads,
     vector<Mat>& biasGrads)
 {
-   float eval_shouldBe = ((ending_eval - starting_eval) / FENs.size()) * state + starting_eval;
+   // S = starting eval (always 0.5)
+   // E = ending eval   (1 or 0 based on who won the game)
+   float N = FENs.size();
+
+   // half a cosine curve going between 0.5 and (0 or 1).
+   // Applies less weighting to the beginning states of a game and more to the end.
+   // interactive visualization of rating system:
+   // https://www.desmos.com/calculator/tqkv6yqygv
+   float eval_shouldBe = (1-2*E)*(cos((M_PI*state)/N) - 1.f)/(4.0f) + 0.5f;
+
+
    Mat input = modelInputFromFEN(FENs[state]);
    Mat output = modelOutputFromVal(eval_shouldBe);
    vector<Mat> diffs;
