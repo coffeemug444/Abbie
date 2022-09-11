@@ -343,15 +343,8 @@ void Abbie::trainOneGame()
       ending_eval = 0.5f;
    }
 
-   vector<std::shared_ptr<std::mutex>> w_mtx;
-   vector<std::shared_ptr<std::mutex>> b_mtx;
    vector<Mat> weightGrads = model_.weightsZero();
    vector<Mat> biasGrads = model_.biasesZero();
-   for (unsigned i = 0; i < weightGrads.size(); i++)
-   {
-      w_mtx.push_back(make_shared<std::mutex>());
-      b_mtx.push_back(make_shared<std::mutex>());
-   }
 
    std::cout << "Game was " << FENs.size() - 1 << " moves long\n";
    std::cout << "Computing weight and bias gradients for state 0\n";

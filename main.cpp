@@ -4,6 +4,11 @@
 #include <filesystem>
 namespace fs = std::filesystem;
 
+std::string getModelString(int i) {
+   std::stringstream ss;
+   ss << "models/model_" << i << ".csv";
+   return ss.str();
+}
 
 bool getTrainingMode() {
    std::string response = "";
@@ -22,7 +27,23 @@ bool getTrainingMode() {
    }
 }
 
-int main() {
+void train5Epochs(int epocLength, int gameNumber) {
+   int i = gameNumber;
+   Abbie bot(getModelString(i));
+
+   while (i <= gameNumber + 5*epocLength)
+   {
+      i++;
+      std::cout << "Game " << i;
+      std::cout << "\033[F\33[2K\033[F\33[2K\033[F\33[2K\033[F\33[2K";
+      bot.trainOneGame();
+      if (i % epocLength == 0)  {
+         bot.saveModel(getModelString(i));
+      }
+   }
+}
+
+int findModelMumber() {
    std::string path = "models";
    std::vector<int> iterations;
    for (const auto & entry : fs::directory_iterator(path)) {
@@ -30,22 +51,21 @@ int main() {
       pathstring = pathstring.substr(pathstring.find('_') + 1, pathstring.find('.'));
       iterations.push_back(std::stoi(pathstring));
    }
-
-   Abbie bot;
-   unsigned i = 0;
    if (iterations.size() != 0) {
       std::sort(iterations.begin(), iterations.end());
-      i = iterations.back();
-      std::stringstream ss;
-      ss << "models/model_" << i << ".csv";
-      Abbie bot(ss.str());
-   } else {
-      std::stringstream outpath;
-      outpath << "models/model_" << i << ".csv";
-      bot.saveModel(outpath.str());
+      return iterations.back();
    }
-   
+   std::stringstream outpath;
+   Abbie bot;
+   bot.saveModel(getModelString(0));
+   return 0;
+}
+
+
+
+int main() {
    bool training_mode = getTrainingMode();
+   int i = findModelMumber();
 
    if ( training_mode ) {
       Board board;
@@ -54,19 +74,12 @@ int main() {
 
       std::cout << "\n\n\n\n";
 
-
       while(true) {
-         i++;
-         std::cout << "Game " << i;
-         std::cout << "\033[F\33[2K\033[F\33[2K\033[F\33[2K\033[F\33[2K";
-         bot.trainOneGame();
-         if (i % epoch_length == 0)  {
-            std::stringstream outpath;
-            outpath << "models/model_" << i << ".csv";
-            bot.saveModel(outpath.str());
-         }
+         train5Epochs(epoch_length, i);
+         i += 5*epoch_length;
       }
    } else {
+      Abbie bot(getModelString(i));
       bot.playAgainst();
    }
 
