@@ -4,6 +4,24 @@
 #include <filesystem>
 namespace fs = std::filesystem;
 
+
+bool getTrainingMode() {
+   std::string response = "";
+   std::cout << "Training mode (y/n): ";
+   while (!(response == "y" || response == "n")) {
+      if (response != "") {
+         std::cout << "Invalid response. Training mode (y/n): ";
+      }
+      std::cin >> response;
+      std::cout << "\033[F\33[2K"; // clear previous line
+   }
+   if (response == "y") {
+      return true;
+   } else {
+      return false;
+   }
+}
+
 int main() {
    std::string path = "models";
    std::vector<int> iterations;
@@ -26,27 +44,31 @@ int main() {
       outpath << "models/model_" << i << ".csv";
       bot.saveModel(outpath.str());
    }
-
-
-   //bot.playAgainst();
-
-   Board board;
    
-   int epoch_length = 100;
+   bool training_mode = getTrainingMode();
 
-   std::cout << "\n\n\n\n";
+   if ( training_mode ) {
+      Board board;
+      
+      int epoch_length = 100;
+
+      std::cout << "\n\n\n\n";
 
 
-   while(true) {
-      i++;
-      std::cout << "Game " << i;
-      std::cout << "\033[F\33[2K\033[F\33[2K\033[F\33[2K\033[F\33[2K";
-      bot.trainOneGame();
-      if (i % epoch_length == 0)  {
-         std::stringstream outpath;
-         outpath << "models/model_" << i << ".csv";
-         bot.saveModel(outpath.str());
+      while(true) {
+         i++;
+         std::cout << "Game " << i;
+         std::cout << "\033[F\33[2K\033[F\33[2K\033[F\33[2K\033[F\33[2K";
+         bot.trainOneGame();
+         if (i % epoch_length == 0)  {
+            std::stringstream outpath;
+            outpath << "models/model_" << i << ".csv";
+            bot.saveModel(outpath.str());
+         }
       }
+   } else {
+      bot.playAgainst();
    }
+
    return 0;
 }
