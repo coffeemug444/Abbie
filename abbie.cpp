@@ -109,34 +109,6 @@ float std_dev(float *input, unsigned len)
    return sqrt(accum / (len - 1)) + 0.000001; // add small constant to std_dev in case all values are exactly the same
 }
 
-void Abbie::evaluateFutureMove(string FEN, Move move, BenBrain *model, float *output)
-{
-   Board futureBoard(FEN);
-   auto result = futureBoard.doMove(move);
-   if (futureBoard.kingIsInCheck()) {
-      if (futureBoard.getLegalMoves().size() == 0) {
-         if (move.piece.color == WHITE) {
-            *output = 1.f;
-         } else {
-            *output = 0.f;
-         }
-         return;
-      }
-   }
-   string futureFEN = futureBoard.genFEN();
-   float futureEval = evaluateFEN(futureFEN, model);
-   assert(!std::isnan(futureEval));
-   *output = futureEval;
-}
-
-void Abbie::getEvals(vector<Move> legalMoves, float *evaluations, BenBrain *model, string FEN)
-{
-   for (unsigned i = 0; i < legalMoves.size(); i++)
-   {
-      evaluateFutureMove( FEN, legalMoves[i], model, evaluations + i);
-   }
-}
-
 float Abbie::minimax(BenBrain *model, int maxDepth, int depthFromStart, std::string FEN, int currentDepth, float alpha, float beta, bool white) {
    Board board(FEN);
    float thisEval = evaluateFEN(FEN, model);
@@ -192,7 +164,7 @@ float Abbie::minimax(BenBrain *model, int maxDepth, int depthFromStart, std::str
    return value;
 }
 
-Move Abbie::getBotMove(string FEN, float &eval)
+Move Abbie::getBotMove(string FEN, float &eval, int maxDepth)
 {
    Board currentBoard = Board(FEN);
    vector<Move> legalMoves = currentBoard.getLegalMoves();
@@ -202,60 +174,30 @@ Move Abbie::getBotMove(string FEN, float &eval)
    {
       return legalMoves[0];
    }
-   float evaluations[num_moves];
 
    char player = FEN[FEN.find(' ') + 1];
    bool playingAsWhite = player == 'w';
 
-   getEvals(legalMoves, evaluations, &model_, FEN);
+   Move bestMove;
+   float negativeInf = - std::numeric_limits<double>::infinity();
+   float positiveInf =   std::numeric_limits<double>::infinity();
+   float bestEval = (playingAsWhite ? negativeInf : positiveInf);
 
-   float best_evaluation = evaluations[0];
-
-   for (unsigned i = 1; i < num_moves; i++)
-   {
-      if (playingAsWhite)
-      {
-         if (evaluations[i] > best_evaluation)
-         {
-            best_evaluation = evaluations[i];
-         }
+   for (auto &move : legalMoves) {
+      Board nextBoard(FEN);
+      nextBoard.doMove(move);
+      float eval = minimax(&model_, maxDepth, 0, nextBoard.genFEN(), 0, negativeInf, positiveInf, !playingAsWhite);
+      if (playingAsWhite && eval > bestEval) {
+         bestEval = eval;
+         bestMove = move;
       }
-      else
-      {
-         if (evaluations[i] < best_evaluation)
-         {
-            best_evaluation = evaluations[i];
-         }
+      if (!playingAsWhite && eval < bestEval) {
+         bestEval = eval;
+         bestMove = move;
       }
    }
 
-   float eval_std_dev = std_dev(evaluations, legalMoves.size());
-   vector<Move> bestMoves{};
-   vector<float> bestEvals{};
-   for (unsigned i = 0; i < num_moves; i++)
-   {
-      if (playingAsWhite)
-      {
-         if ((evaluations[i] + eval_std_dev) > best_evaluation)
-         {
-            bestMoves.push_back(legalMoves[i]);
-            bestEvals.push_back(evaluations[i]);
-         }
-      }
-      else
-      {
-         if ((evaluations[i] - eval_std_dev) < best_evaluation)
-         {
-            bestMoves.push_back(legalMoves[i]);
-            bestEvals.push_back(evaluations[i]);
-         }
-      }
-   }
-
-   std::uniform_int_distribution<std::mt19937::result_type> dist(0, bestMoves.size() - 1);
-   int index = dist(rng_);
-   eval = bestEvals[index];
-   return bestMoves[index];
+   return bestMove;
 }
 
 void Abbie::playAgainst()
@@ -295,7 +237,7 @@ void Abbie::playAgainst()
          {
             string FEN = game.getFEN();
             float eval = 0.f;
-            Move botMove = getBotMove(FEN, eval);
+            Move botMove = getBotMove(FEN, eval, 15);
             state = game.acceptMove(botMove);
             for (int i = 0; i < 9; i++)
             {
@@ -374,7 +316,7 @@ void Abbie::trainOneGame()
       string FEN = game.getFEN();
       FENs.push_back(FEN);
       float eval;
-      Move move = getBotMove(FEN, eval);
+      Move move = getBotMove(FEN, eval, 2);
       gameState = game.acceptMove(move);
       whitePlaying = !whitePlaying;
    }
@@ -423,11 +365,11 @@ void Abbie::trainOneBoard()
    string FEN1 = game.getFEN();
    Move move;
    cout << "Finding first move\n";
-   move = getBotMove(FEN1, eval);
+   move = getBotMove(FEN1, eval, 1);
    game.acceptMove(move);
    string FEN2 = game.getFEN();
    cout << "Finding second move\n";
-   move = getBotMove(FEN2, eval);
+   move = getBotMove(FEN2, eval, 1);
    game.acceptMove(move);
 
    vector<Mat> weightGrads = model_.weightsZero();
