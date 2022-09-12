@@ -114,6 +114,9 @@ float Abbie::minimax(BenBrain *model, int maxDepth, int depthFromStart, std::str
    float thisEval = evaluateFEN(FEN, model);
    assert(!std::isnan(thisEval));
 
+   float negativeInf = - std::numeric_limits<double>::infinity();
+   float positiveInf =   std::numeric_limits<double>::infinity();
+
    int nextDepth = currentDepth - 1;
    vector<Move> legalMoves = board.getLegalMoves();
    bool kingInCheck = board.kingIsInCheck();
@@ -122,10 +125,10 @@ float Abbie::minimax(BenBrain *model, int maxDepth, int depthFromStart, std::str
       if (kingInCheck) {
          if (white) {
             // white is in checkmate
-            return 0.f;
+            return negativeInf;
          } else {
             // black is in checkmate
-            return 1.f;
+            return positiveInf;
          }
       }
       // game is draw
@@ -138,7 +141,7 @@ float Abbie::minimax(BenBrain *model, int maxDepth, int depthFromStart, std::str
    }
 
    depthFromStart++;
-   float value = (white ? -1 : 1) * std::numeric_limits<double>::infinity();
+   float value = (white ? negativeInf : positiveInf);
    for (auto &move : moves) {
       int nextDepth = currentDepth - 1;
       bool isCapture = board.getState()[move.destination].type != BLANK_P;
