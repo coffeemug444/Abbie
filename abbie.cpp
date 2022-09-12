@@ -137,6 +137,61 @@ void Abbie::getEvals(vector<Move> legalMoves, float *evaluations, BenBrain *mode
    }
 }
 
+float Abbie::minimax(BenBrain *model, int maxDepth, int depthFromStart, std::string FEN, int currentDepth, float alpha, float beta, bool white) {
+   Board board(FEN);
+   float thisEval = evaluateFEN(FEN, model);
+   assert(!std::isnan(thisEval));
+
+   int nextDepth = currentDepth - 1;
+   vector<Move> legalMoves = board.getLegalMoves();
+   bool kingInCheck = board.kingIsInCheck();
+
+   if (legalMoves.size() == 0) {
+      if (kingInCheck) {
+         if (white) {
+            // white is in checkmate
+            return 0.f;
+         } else {
+            // black is in checkmate
+            return 1.f;
+         }
+      }
+      // game is draw
+      return 0.5f;
+   }
+
+   std::vector<Move> moves;
+   if (depthFromStart == maxDepth || currentDepth == 0) {
+      return thisEval;
+   }
+
+   depthFromStart++;
+   float value = (white ? -1 : 1) * std::numeric_limits<double>::infinity();
+   for (auto &move : moves) {
+      int nextDepth = currentDepth - 1;
+      bool isCapture = board.getState()[move.destination].type != BLANK_P;
+      if (isCapture) {
+         nextDepth = 5;
+      }
+      board.doMove(move);
+      float nextEval = minimax(model, maxDepth, depthFromStart, board.genFEN(), nextDepth, alpha, beta, !white);
+      if (white) {
+         value = std::max(value, nextEval);
+         if (value >= beta) {
+            break;
+         }
+         alpha = std::max(value, alpha);
+      } else {
+         value = std::min(value, nextEval);
+         if (value <= alpha) {
+            break;
+         }
+         beta = std::min(value, beta);
+      }
+   }
+   return value;
+}
+
 Move Abbie::getBotMove(string FEN, float &eval)
 {
    Board currentBoard = Board(FEN);

@@ -17,6 +17,7 @@ private:
    BenBrain model_;
    static Mat modelInputFromFEN(std::string FEN);
    static Mat modelOutputFromVal(float val);
+   static float minimax(BenBrain *model, int maxDepth, int depthFromStart, std::string FEN, int currentDepth, float alpha, float beta, bool white);
    static float evaluateFEN(std::string FEN, BenBrain* model);
    static void evaluateFutureMove(std::string FEN, Move move, BenBrain* model, float* output);
    static void getEvals(std::vector<Move> legalMoves, float* evaluations, BenBrain* model, std::string FEN);
