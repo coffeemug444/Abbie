@@ -17,7 +17,7 @@ private:
    BenBrain model_;
    static Mat modelInputFromFEN(std::string FEN);
    static Mat modelOutputFromVal(float val);
-   static float minimax(BenBrain *model, int maxDepth, int depthFromStart, std::string FEN, int currentDepth, float alpha, float beta, bool white);
+   static float minimax(BenBrain *model, int maxDepth, int initialDepth, int depthFromStart, std::string FEN, int currentDepth, float alpha, float beta, bool white);
    static float evaluateFEN(std::string FEN, BenBrain* model);
    void compute_W_B_forState(
       std::vector<std::string>& FENs,
@@ -34,7 +34,7 @@ public:
    Abbie();
    Abbie(std::string modelPath);
    void playAgainst();
-   Move getBotMove(std::string FEN, float& eval, int maxDepth);
+   Move getBotMove(std::string FEN, float &eval, int maxDepth, int initialDepth);
 
    void trainOneGame();
    void trainOneBoard();

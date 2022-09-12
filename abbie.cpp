@@ -109,7 +109,7 @@ float std_dev(float *input, unsigned len)
    return sqrt(accum / (len - 1)) + 0.000001; // add small constant to std_dev in case all values are exactly the same
 }
 
-float Abbie::minimax(BenBrain *model, int maxDepth, int depthFromStart, std::string FEN, int currentDepth, float alpha, float beta, bool white) {
+float Abbie::minimax(BenBrain *model, int maxDepth, int initialDepth, int depthFromStart, std::string FEN, int currentDepth, float alpha, float beta, bool white) {
    Board board(FEN);
    float thisEval = evaluateFEN(FEN, model);
    assert(!std::isnan(thisEval));
@@ -117,7 +117,6 @@ float Abbie::minimax(BenBrain *model, int maxDepth, int depthFromStart, std::str
    float negativeInf = - std::numeric_limits<double>::infinity();
    float positiveInf =   std::numeric_limits<double>::infinity();
 
-   int nextDepth = currentDepth - 1;
    vector<Move> legalMoves = board.getLegalMoves();
    bool kingInCheck = board.kingIsInCheck();
 
@@ -135,21 +134,24 @@ float Abbie::minimax(BenBrain *model, int maxDepth, int depthFromStart, std::str
       return 0.5f;
    }
 
-   std::vector<Move> moves;
    if (depthFromStart == maxDepth || currentDepth == 0) {
       return thisEval;
    }
 
    depthFromStart++;
    float value = (white ? negativeInf : positiveInf);
-   for (auto &move : moves) {
+   for (auto &move : legalMoves) {
       int nextDepth = currentDepth - 1;
-      bool isCapture = board.getState()[move.destination].type != BLANK_P;
-      if (isCapture) {
-         nextDepth = 5;
-      }
       board.doMove(move);
-      float nextEval = minimax(model, maxDepth, depthFromStart, board.genFEN(), nextDepth, alpha, beta, !white);
+      bool isCapture = board.getState()[move.destination].type != BLANK_P;
+      // imporant event has occured, reset depthFromStart
+      if (isCapture) {
+         nextDepth = initialDepth;
+      } 
+      else if (board.kingIsInCheck()) {
+         nextDepth = initialDepth;
+      }
+      float nextEval = minimax(model, maxDepth, initialDepth, depthFromStart, board.genFEN(), nextDepth, alpha, beta, !white);
       if (white) {
          value = std::max(value, nextEval);
          if (value >= beta) {
@@ -167,7 +169,7 @@ float Abbie::minimax(BenBrain *model, int maxDepth, int depthFromStart, std::str
    return value;
 }
 
-Move Abbie::getBotMove(string FEN, float &eval, int maxDepth)
+Move Abbie::getBotMove(string FEN, float &eval, int maxDepth, int initialDepth)
 {
    Board currentBoard = Board(FEN);
    vector<Move> legalMoves = currentBoard.getLegalMoves();
@@ -189,7 +191,7 @@ Move Abbie::getBotMove(string FEN, float &eval, int maxDepth)
    for (auto &move : legalMoves) {
       Board nextBoard(FEN);
       nextBoard.doMove(move);
-      float eval = minimax(&model_, maxDepth, 0, nextBoard.genFEN(), 0, negativeInf, positiveInf, !playingAsWhite);
+      float eval = minimax(&model_, maxDepth, initialDepth, 0, nextBoard.genFEN(), initialDepth, negativeInf, positiveInf, !playingAsWhite);
       if (playingAsWhite && eval > bestEval) {
          bestEval = eval;
          bestMove = move;
@@ -199,7 +201,7 @@ Move Abbie::getBotMove(string FEN, float &eval, int maxDepth)
          bestMove = move;
       }
    }
-
+   eval = bestEval;
    return bestMove;
 }
 
@@ -240,7 +242,7 @@ void Abbie::playAgainst()
          {
             string FEN = game.getFEN();
             float eval = 0.f;
-            Move botMove = getBotMove(FEN, eval, 15);
+            Move botMove = getBotMove(FEN, eval, 2, 1);
             state = game.acceptMove(botMove);
             for (int i = 0; i < 9; i++)
             {
@@ -319,7 +321,7 @@ void Abbie::trainOneGame()
       string FEN = game.getFEN();
       FENs.push_back(FEN);
       float eval;
-      Move move = getBotMove(FEN, eval, 2);
+      Move move = getBotMove(FEN, eval, 0, 0);
       gameState = game.acceptMove(move);
       whitePlaying = !whitePlaying;
    }
@@ -368,11 +370,11 @@ void Abbie::trainOneBoard()
    string FEN1 = game.getFEN();
    Move move;
    cout << "Finding first move\n";
-   move = getBotMove(FEN1, eval, 1);
+   move = getBotMove(FEN1, eval, 0, 0);
    game.acceptMove(move);
    string FEN2 = game.getFEN();
    cout << "Finding second move\n";
-   move = getBotMove(FEN2, eval, 1);
+   move = getBotMove(FEN2, eval, 0, 0);
    game.acceptMove(move);
 
    vector<Mat> weightGrads = model_.weightsZero();
