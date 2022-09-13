@@ -1,7 +1,7 @@
 #!/bin/bash
 while true
 do
-./opt
+./opt yolo
 sleep 1
 done
 
