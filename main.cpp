@@ -63,8 +63,25 @@ int findModelMumber() {
 
 
 
-int main() {
-   bool training_mode = getTrainingMode();
+int main(int argc, char**argv) {
+   bool training_mode;
+   if (argc > 2) {
+      std::cout << "Usage: opt [TRAINING_MODE(y/n)]\n";
+      exit(0);
+   }
+   if (argc == 1) {
+      training_mode = getTrainingMode();
+   }
+   if (argc == 2) {
+      if (argv[1][0] == 'y') {
+         training_mode = true;
+      } else if (argv[1][0] == 'n') {
+         training_mode = false;
+      } else {
+         std::cout << "Usage: opt [TRAINING_MODE(y/n)]\n";
+         exit(0);
+      }
+   }
    int i = findModelMumber();
 
    if ( training_mode ) {
