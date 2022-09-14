@@ -321,7 +321,17 @@ void Abbie::trainOneGame()
       string FEN = game.getFEN();
       FENs.push_back(FEN);
       float eval;
-      Move move = getBotMove(FEN, eval, 0, 0);
+      std::uniform_int_distribution<int> uid(1,20);
+      Move move;
+      if (uid(rng_) == 1) {
+         // 5% chance of doing a random move
+         auto legalMoves = game.getLegalMoves();
+         uid = std::uniform_int_distribution<int>(0, legalMoves.size() - 1);
+         move = legalMoves[uid(rng_)];
+      } else {
+         move = getBotMove(FEN, eval, 0, 0);
+      }
+
       gameState = game.acceptMove(move);
       whitePlaying = !whitePlaying;
    }
