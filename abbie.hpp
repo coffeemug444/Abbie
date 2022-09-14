@@ -27,6 +27,7 @@ private:
       std::vector<Mat>& weightGrads,
       std::vector<Mat>& biasGrads
    );
+   Move getRandomMove(std::string FEN);
 
    
 

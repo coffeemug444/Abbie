@@ -304,6 +304,26 @@ void Abbie::compute_W_B_forState(
    }
 }
 
+Move Abbie::getRandomMove(std::string FEN) {
+   // returns a "random" move. If it sees it can get
+   // mate in 1 then it will return that move, otherwise
+   // pick from current legal moves
+   Board board(FEN);
+   std::vector<Move> legalMoves = board.getLegalMoves();
+   for (auto & legalMove : legalMoves) {
+      Board newBoard(board);
+      newBoard.doMove(legalMove);
+      auto remainingMoves = newBoard.getLegalMoves();
+      if (remainingMoves.size() == 0) {
+         if (newBoard.kingIsInCheck()) {
+            return legalMove;
+         }
+      }
+   }
+   std::uniform_int_distribution<int> uid(0, legalMoves.size() - 1);
+   return legalMoves[uid(rng_)];
+}
+
 void Abbie::trainOneGame()
 {
    Chess game;
@@ -325,9 +345,7 @@ void Abbie::trainOneGame()
       Move move;
       if (uid(rng_) == 1) {
          // 5% chance of doing a random move
-         auto legalMoves = game.getLegalMoves();
-         uid = std::uniform_int_distribution<int>(0, legalMoves.size() - 1);
-         move = legalMoves[uid(rng_)];
+         move = getRandomMove(FEN);
       } else {
          move = getBotMove(FEN, eval, 0, 0);
       }
