@@ -1,30 +1,35 @@
 CC=g++
-IDIR=..
+LL=ar
 LDIR=../.OBJECTS
-DEPS = abbie.hpp $(IDIR)/chess/chess.hpp 
-ODIR=.obj
+IDIR=../
+INC=-I$(IDIR)
+ODIR=../.OBJECTS
+OBJDIR=.obj
+DEPS = abbie.hpp
 
-_OBJ = main.o abbie.o
-OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
-OBJ_OPT = $(patsubst %,$(ODIR)/opt%,$(_OBJ))
 
-$(ODIR)/%.o: %.cpp $(DEPS)
-	$(CC) -c -g -o $@ $< -I$(IDIR)/ 
+.PHONY: main
+main: $(ODIR)/libabbie.a
 
-$(ODIR)/opt%.o: %.cpp $(DEPS)
-	$(CC) -c -O3 -o $@ $< -I$(IDIR)/
+.PHONY: opt
+opt: $(ODIR)/libabbieOpt.a
 
-main: $(OBJ)
-	$(CC) -g -march=native -o $@ $^ -L$(LDIR) -ffast-math -fopenmp -lchess -lbenBrain -lbenMat -lOpenCL
+$(OBJDIR)/abbie.o: abbie.cpp $(DEPS)
+	$(CC) -g -c $(INC) -o $@ $<
 
-opt: $(OBJ_OPT)
-	$(CC) -O3 -march=native -o $@ $^ -L$(LDIR) -ffast-math -fopenmp -lchessOpt -lbenBrainOpt -lbenMat -lOpenCL
+$(OBJDIR)/abbieOpt.o: abbie.cpp $(DEPS)
+	$(CC) -O3 -c $(INC) -o $@ $<
+
+$(ODIR)/libabbie.a: $(OBJDIR)/abbie.o
+	$(LL) src $@ $^ 
+
+$(ODIR)/libabbieOpt.a: $(OBJDIR)/abbieOpt.o
+	$(LL) src $@ $^
 
 .PHONY: all
 all:
 	make main
 	make opt
 
-.PHONY: clean
 clean:
-	rm $(OBJ) $(OBJ_OPT) main opt
+	-rm -f $(OBJDIR)/* $(ODIR)/libabbie*
