@@ -2,6 +2,7 @@
 #include <chrono>
 #include <thread>
 #include <future>
+#include <map>
 
 using namespace std::chrono_literals;
 using std::chrono::system_clock,
@@ -29,22 +30,53 @@ void Abbie::saveModel(std::string savePath)
    model_.save(savePath);
 }
 
-std::vector<float> Abbie::evaluateFENs(std::vector<std::string> FENs, BenBrain* model) {
+
+
+std::vector<float> Abbie::evaluateStates(std::vector<std::shared_ptr<Piece[]>> states) {
    std::vector<Mat> inputs;
-   for (auto& FEN : FENs) {
-      inputs.push_back(modelInputFromFEN(FEN));
+   for (auto& state : states) {
+      inputs.push_back(modelInputFromState(state));
    }
-   Mat outputs = model->multipleCompute(inputs);
+   Mat outputs = model_.multipleCompute(inputs);
    std::shared_ptr<float[]> outVals = outputs.getVals();
    return std::vector<float>(outVals.get(), outVals.get() + outputs.getHeight());
 }
 
-float Abbie::evaluateFEN(string FEN, BenBrain *model)
+float Abbie::evaluateFEN(string FEN)
 {
    Mat input = modelInputFromFEN(FEN);
-   Mat output = model->compute(input);
+   Mat output = model_.compute(input);
    float outval = output.getVal(0, 0);
    return outval;
+}
+
+Mat modelInputFromState(std::shared_ptr<Piece[]> state) {
+   static const std::map<PieceType, unsigned> inputPieceIndexMap {
+      {PAWN, 0*2*64},
+      {ROOK, 1*2*64},
+      {KNIGHT, 2*2*64},
+      {BISHOP, 3*2*64},
+      {QUEEN, 4*2*64},
+      {KING, 5*2*64}
+   };
+   static const std::map<Color, unsigned> inputColorIndexMap {
+      {BLACK, 0},
+      {WHITE, 64}
+   };
+
+   shared_ptr<float[]> model_input = make_unique<float[]>(INPUT_SIZE);
+   memset(model_input.get(), 0, INPUT_SIZE*sizeof(float));
+
+   for (int i = 0; i < 64; i++) {
+      Piece piece = state[i];
+      if (piece.type != BLANK_P) {
+         auto index = 
+               inputPieceIndexMap.at(piece.type) + 
+               inputColorIndexMap.at(piece.color);
+         model_input[index] = 1;
+      }
+   }
+   return Mat(INPUT_SIZE, 1, model_input);
 }
 
 Mat Abbie::modelInputFromFEN(string FEN)
@@ -119,9 +151,8 @@ float std_dev(float *input, unsigned len)
    return sqrt(accum / (len - 1)) + 0.000001; // add small constant to std_dev in case all values are exactly the same
 }
 
-Move Abbie::getBotMove(string FEN, float &eval, int maxDepth, int initialDepth)
-{
-   Board currentBoard = Board(FEN);
+Move Abbie::getBotMove(Board& board, float &eval, int maxDepth, int initialDepth) {
+   Board currentBoard(board);
    vector<Move> legalMoves = currentBoard.getLegalMoves();
    int num_moves = legalMoves.size();
    assert(num_moves != 0);
@@ -130,8 +161,7 @@ Move Abbie::getBotMove(string FEN, float &eval, int maxDepth, int initialDepth)
       return legalMoves[0];
    }
 
-   char player = FEN[FEN.find(' ') + 1];
-   bool playingAsWhite = player == 'w';
+   bool playingAsWhite = currentBoard.getCurrentPlayer() == WHITE;
 
    Move bestMove;
    float negativeInf = - std::numeric_limits<double>::infinity();
@@ -139,11 +169,11 @@ Move Abbie::getBotMove(string FEN, float &eval, int maxDepth, int initialDepth)
    float bestEval = (playingAsWhite ? negativeInf : positiveInf);
 
 
-   std::vector<std::string> moveFENs;
+   std::vector<std::shared_ptr<Piece[]>> moveStates;
    for (auto &move : legalMoves) {
-      Board nextBoard(FEN);
+      Board nextBoard(currentBoard);
       nextBoard.doMove(move);
-      moveFENs.push_back(nextBoard.genFEN());
+      moveStates.push_back(nextBoard.getState());
       if (nextBoard.kingIsInCheck()) {
          if (nextBoard.getLegalMoves().size() == 0) {
             // always return mate in 1
@@ -152,7 +182,7 @@ Move Abbie::getBotMove(string FEN, float &eval, int maxDepth, int initialDepth)
       }
    }
 
-   std::vector<float> evals = evaluateFENs(moveFENs, &model_);
+   std::vector<float> evals = evaluateStates(moveStates);
 
    for (int i = 0; i < legalMoves.size(); i++) {
       eval = evals[i];
@@ -168,6 +198,12 @@ Move Abbie::getBotMove(string FEN, float &eval, int maxDepth, int initialDepth)
    
    eval = bestEval;
    return bestMove;
+}
+
+Move Abbie::getBotMove(string FEN, float &eval, int maxDepth, int initialDepth)
+{
+   Board currentBoard = Board(FEN);
+   return getBotMove(currentBoard, eval, maxDepth, initialDepth);
 }
 
 void Abbie::playAgainst()
@@ -352,59 +388,4 @@ void Abbie::trainOneGame()
 
    std::cout << "Adjusting weights and biases\n";
    model_.adjustWeightsAndBiases(weightGrads, biasGrads, 0.03, FENs.size());
-}
-
-void Abbie::trainOneBoard()
-{
-   Chess game;
-   float eval;
-
-   bool whitePlaying = true;
-   string FEN1 = game.getFEN();
-   Move move;
-   cout << "Finding first move\n";
-   move = getBotMove(FEN1, eval, 0, 0);
-   game.acceptMove(move);
-   string FEN2 = game.getFEN();
-   cout << "Finding second move\n";
-   move = getBotMove(FEN2, eval, 0, 0);
-   game.acceptMove(move);
-
-   vector<Mat> weightGrads = model_.weightsZero();
-   vector<Mat> biasGrads = model_.biasesZero();
-
-   unsigned board = 0;
-   for (auto FEN : {FEN1, FEN2})
-   {
-      board++;
-      float eval_shouldBe = 0.5;
-
-      Mat input = modelInputFromFEN(FEN);
-      Mat output = modelOutputFromVal(eval_shouldBe);
-      std::cout << "calculating diffs for board " << board << "\n";
-      vector<Mat> diffs;
-      vector<Mat> as;
-      model_.backPropagate(input, output, diffs, as);
-
-      std::cout << "computing weight gradients\n";
-      auto nw = model_.computeWeights(diffs, as);
-      std::cout << "adding weight gradients to gradient sum\n";
-      for (int w = 0; w < weightGrads.size(); w++)
-      {
-         auto newWeightGrad = weightGrads[w] + nw[w];
-         weightGrads[w] = newWeightGrad;
-      }
-
-      std::cout << "computing bias gradients\n";
-      auto nb = model_.computeBiases(diffs);
-      std::cout << "adding bias gradients to gradient sum\n";
-      for (int b = 0; b < biasGrads.size(); b++)
-      {
-         auto newBiasGrad = biasGrads[b] + nb[b];
-         biasGrads[b] = newBiasGrad;
-      }
-   }
-
-   std::cout << "Adjusting weights and biases\n";
-   model_.adjustWeightsAndBiases(weightGrads, biasGrads, 0.003, 2);
 }

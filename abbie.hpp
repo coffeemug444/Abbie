@@ -16,9 +16,11 @@ private:
    std::mt19937 rng_;
    BenBrain model_;
    static Mat modelInputFromFEN(std::string FEN);
+   static Mat modelInputFromState(std::shared_ptr<Piece[]> state);
    static Mat modelOutputFromVal(float val);
-   static float evaluateFEN(std::string FEN, BenBrain* model);
-   static std::vector<float> evaluateFENs(std::vector<std::string> FEN, BenBrain* model);
+   float evaluateFEN(std::string FEN);
+
+   std::vector<float> evaluateStates(std::vector<std::shared_ptr<Piece[]>> states);
    void compute_W_B_forState(
       std::vector<std::string>& FENs,
       unsigned state,
@@ -28,8 +30,7 @@ private:
       std::vector<Mat>& biasGrads
    );
    Move getRandomMove(std::string FEN);
-
-   
+   Move getBotMove(Board& board, float &eval, int maxDepth, int initialDepth);
 
 public:
    Abbie();
@@ -38,7 +39,6 @@ public:
    Move getBotMove(std::string FEN, float &eval, int maxDepth, int initialDepth);
 
    void trainOneGame();
-   void trainOneBoard();
 
    void saveModel(std::string savePath);
 
