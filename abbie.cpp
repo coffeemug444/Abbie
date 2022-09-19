@@ -29,10 +29,20 @@ void Abbie::saveModel(std::string savePath)
    model_.save(savePath);
 }
 
+std::vector<float> Abbie::evaluateFENs(std::vector<std::string> FENs, BenBrain* model) {
+   std::vector<Mat> inputs;
+   for (auto& FEN : FENs) {
+      inputs.push_back(modelInputFromFEN(FEN));
+   }
+   Mat outputs = model->multipleCompute(inputs);
+   std::shared_ptr<float[]> outVals = outputs.getVals();
+   return std::vector<float>(outVals.get(), outVals.get() + outputs.getHeight());
+}
+
 float Abbie::evaluateFEN(string FEN, BenBrain *model)
 {
    Mat input = modelInputFromFEN(FEN);
-   Mat output = model->compute(input, BenBrain::leaky_reLU_act);
+   Mat output = model->compute(input);
    float outval = output.getVal(0, 0);
    return outval;
 }
@@ -109,66 +119,6 @@ float std_dev(float *input, unsigned len)
    return sqrt(accum / (len - 1)) + 0.000001; // add small constant to std_dev in case all values are exactly the same
 }
 
-float Abbie::minimax(BenBrain *model, int maxDepth, int initialDepth, int depthFromStart, std::string FEN, int currentDepth, float alpha, float beta, bool white) {
-   Board board(FEN);
-   float thisEval = evaluateFEN(FEN, model);
-   assert(!std::isnan(thisEval));
-
-   float negativeInf = - std::numeric_limits<double>::infinity();
-   float positiveInf =   std::numeric_limits<double>::infinity();
-
-   vector<Move> legalMoves = board.getLegalMoves();
-   bool kingInCheck = board.kingIsInCheck();
-
-   if (legalMoves.size() == 0) {
-      if (kingInCheck) {
-         if (white) {
-            // white is in checkmate
-            return negativeInf;
-         } else {
-            // black is in checkmate
-            return positiveInf;
-         }
-      }
-      // game is draw
-      return 0.5f;
-   }
-
-   if (depthFromStart == maxDepth || currentDepth == 0) {
-      return thisEval;
-   }
-
-   depthFromStart++;
-   float value = (white ? negativeInf : positiveInf);
-   for (auto &move : legalMoves) {
-      int nextDepth = currentDepth - 1;
-      board.doMove(move);
-      bool isCapture = board.getState()[move.destination].type != BLANK_P;
-      // imporant event has occured, reset depthFromStart
-      if (isCapture) {
-         nextDepth = initialDepth;
-      } 
-      else if (board.kingIsInCheck()) {
-         nextDepth = initialDepth;
-      }
-      float nextEval = minimax(model, maxDepth, initialDepth, depthFromStart, board.genFEN(), nextDepth, alpha, beta, !white);
-      if (white) {
-         value = std::max(value, nextEval);
-         if (value >= beta) {
-            break;
-         }
-         alpha = std::max(value, alpha);
-      } else {
-         value = std::min(value, nextEval);
-         if (value <= alpha) {
-            break;
-         }
-         beta = std::min(value, beta);
-      }
-   }
-   return value;
-}
-
 Move Abbie::getBotMove(string FEN, float &eval, int maxDepth, int initialDepth)
 {
    Board currentBoard = Board(FEN);
@@ -188,19 +138,34 @@ Move Abbie::getBotMove(string FEN, float &eval, int maxDepth, int initialDepth)
    float positiveInf =   std::numeric_limits<double>::infinity();
    float bestEval = (playingAsWhite ? negativeInf : positiveInf);
 
+
+   std::vector<std::string> moveFENs;
    for (auto &move : legalMoves) {
       Board nextBoard(FEN);
       nextBoard.doMove(move);
-      float eval = minimax(&model_, maxDepth, initialDepth, 0, nextBoard.genFEN(), initialDepth, negativeInf, positiveInf, !playingAsWhite);
+      moveFENs.push_back(nextBoard.genFEN());
+      if (nextBoard.kingIsInCheck()) {
+         if (nextBoard.getLegalMoves().size() == 0) {
+            // always return mate in 1
+            return move;
+         }
+      }
+   }
+
+   std::vector<float> evals = evaluateFENs(moveFENs, &model_);
+
+   for (int i = 0; i < legalMoves.size(); i++) {
+      eval = evals[i];
       if (playingAsWhite && eval > bestEval) {
          bestEval = eval;
-         bestMove = move;
+         bestMove = legalMoves[i];
       }
       if (!playingAsWhite && eval < bestEval) {
          bestEval = eval;
-         bestMove = move;
+         bestMove = legalMoves[i];
       }
    }
+   
    eval = bestEval;
    return bestMove;
 }
@@ -288,7 +253,7 @@ void Abbie::compute_W_B_forState(
    vector<Mat> diffs;
    vector<Mat> as;
 
-   model_.backPropagate(input, output, diffs, as, BenBrain::leaky_reLU_act, BenBrain::leaky_reLU_inv);
+   model_.backPropagate(input, output, diffs, as);
 
    auto nw = model_.computeWeights(diffs, as);
    for (int w = 0; w < weightGrads.size(); w++)
@@ -419,7 +384,7 @@ void Abbie::trainOneBoard()
       std::cout << "calculating diffs for board " << board << "\n";
       vector<Mat> diffs;
       vector<Mat> as;
-      model_.backPropagate(input, output, diffs, as, BenBrain::leaky_reLU_act, BenBrain::leaky_reLU_inv);
+      model_.backPropagate(input, output, diffs, as);
 
       std::cout << "computing weight gradients\n";
       auto nw = model_.computeWeights(diffs, as);

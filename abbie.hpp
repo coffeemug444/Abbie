@@ -17,8 +17,8 @@ private:
    BenBrain model_;
    static Mat modelInputFromFEN(std::string FEN);
    static Mat modelOutputFromVal(float val);
-   static float minimax(BenBrain *model, int maxDepth, int initialDepth, int depthFromStart, std::string FEN, int currentDepth, float alpha, float beta, bool white);
    static float evaluateFEN(std::string FEN, BenBrain* model);
+   static std::vector<float> evaluateFENs(std::vector<std::string> FEN, BenBrain* model);
    void compute_W_B_forState(
       std::vector<std::string>& FENs,
       unsigned state,
