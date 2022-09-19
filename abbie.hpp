@@ -21,6 +21,13 @@ private:
    float evaluateFEN(std::string FEN);
 
    std::vector<float> evaluateStates(std::vector<std::shared_ptr<Piece[]>> states);
+   void compute_W_B_fromStates (
+      std::vector<std::shared_ptr<Piece[]>> states,
+      float starting_eval,
+      float ending_eval,
+      std::vector<Mat>& weightGrads,
+      std::vector<Mat>& biasGrads
+   );
    void compute_W_B_forState(
       std::vector<std::string>& FENs,
       unsigned state,

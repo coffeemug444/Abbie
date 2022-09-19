@@ -50,7 +50,7 @@ float Abbie::evaluateFEN(string FEN)
    return outval;
 }
 
-Mat modelInputFromState(std::shared_ptr<Piece[]> state) {
+Mat Abbie::modelInputFromState(std::shared_ptr<Piece[]> state) {
    static const std::map<PieceType, unsigned> inputPieceIndexMap {
       {PAWN, 0*2*64},
       {ROOK, 1*2*64},
@@ -265,6 +265,32 @@ Mat Abbie::modelOutputFromVal(float val)
    return Mat(1, 1, output);
 }
 
+void Abbie::compute_W_B_fromStates (
+   std::vector<std::shared_ptr<Piece[]>> states,
+   float S,
+   float E,
+   std::vector<Mat>& weightGrads,
+   std::vector<Mat>& biasGrads)
+{
+   // S = starting eval (always 0.5)
+   // E = ending eval   (1 or 0 based on who won the game)
+   float N = states.size();
+
+   // half a cosine curve going between 0.5 and (0 or 1).
+   // Applies less weighting to the beginning states of a game and more to the end.
+   // interactive visualization of rating system:
+   // https://www.desmos.com/calculator/tqkv6yqygv
+   vector<Mat> inputs;
+   vector<Mat> outputs;
+   for (int i = 0; i < N; i++) {
+      float eval = (1-2*E)*(cos((M_PI*i)/N) - 1.f)/(4.0f) + 0.5f;
+      outputs.push_back(modelOutputFromVal(eval));
+      inputs.push_back(modelInputFromState(states[i]));
+   }
+
+   model_.multipleBackPropagate(inputs,outputs,weightGrads,biasGrads);
+}
+
 void Abbie::compute_W_B_forState(
     vector<string>& FENs,
     unsigned state,
@@ -329,7 +355,9 @@ void Abbie::trainOneGame()
 {
    Chess game;
    GameState gameState = ONGOING;
-   vector<string> FENs{};
+   vector<std::shared_ptr<Piece[]>> states{};
+
+   auto thing = game.getBoardState();
 
    std::cout << "turn 0\n";
 
@@ -340,7 +368,7 @@ void Abbie::trainOneGame()
       turnCount++;
       std::cout << "\033[Fturn " << turnCount << "\n";
       string FEN = game.getFEN();
-      FENs.push_back(FEN);
+      states.push_back(game.getBoardState());
       float eval;
       std::uniform_int_distribution<int> uid(1,20);
       Move move;
@@ -354,7 +382,7 @@ void Abbie::trainOneGame()
       gameState = game.acceptMove(move);
       whitePlaying = !whitePlaying;
    }
-   FENs.push_back(game.getFEN());
+   states.push_back(game.getBoardState());
 
    float starting_eval = 0.5f;
    float ending_eval;
@@ -374,18 +402,14 @@ void Abbie::trainOneGame()
       ending_eval = 0.5f;
    }
 
-   vector<Mat> weightGrads = model_.weightsZero();
-   vector<Mat> biasGrads = model_.biasesZero();
+   vector<Mat> weightGrads;
+   vector<Mat> biasGrads;
 
-   std::cout << "Game was " << FENs.size() - 1 << " moves long\n";
-   std::cout << "Computing weight and bias gradients for state 0\n";
+   std::cout << "Game was " << states.size() - 1 << " moves long\n";
+   std::cout << "Computing weight and bias gradients\n";
 
-   for (unsigned state = 0; state < FENs.size(); state++)
-   {
-      compute_W_B_forState( FENs, state, starting_eval, ending_eval, weightGrads, biasGrads);
-      std::cout << "\033[F\33[2KComputing weight and bias gradients for state " << state << std::endl;
-   }
+   compute_W_B_fromStates(states, starting_eval, ending_eval, weightGrads, biasGrads);
 
    std::cout << "Adjusting weights and biases\n";
-   model_.adjustWeightsAndBiases(weightGrads, biasGrads, 0.03, FENs.size());
+   model_.adjustWeightsAndBiases(weightGrads, biasGrads, 0.03, states.size());
 }
