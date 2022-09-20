@@ -30,13 +30,7 @@ void Abbie::saveModel(std::string savePath)
    model_.save(savePath);
 }
 
-
-
-std::vector<float> Abbie::evaluateStates(std::vector<std::shared_ptr<Piece[]>> states) {
-   std::vector<Mat> inputs;
-   for (auto& state : states) {
-      inputs.push_back(modelInputFromState(state));
-   }
+std::vector<float> Abbie::evaluateInputs(std::vector<Mat> inputs) {
    Mat outputs = model_.multipleCompute(inputs);
    std::shared_ptr<float[]> outVals = outputs.getVals();
    return std::vector<float>(outVals.get(), outVals.get() + outputs.getHeight());
@@ -50,7 +44,7 @@ float Abbie::evaluateFEN(string FEN)
    return outval;
 }
 
-Mat Abbie::modelInputFromState(std::shared_ptr<Piece[]> state) {
+unsigned pieceOffset(Piece piece) {
    static const std::map<PieceType, unsigned> inputPieceIndexMap {
       {PAWN, 0*2*64},
       {ROOK, 1*2*64},
@@ -63,74 +57,43 @@ Mat Abbie::modelInputFromState(std::shared_ptr<Piece[]> state) {
       {BLACK, 0},
       {WHITE, 64}
    };
+   return inputPieceIndexMap.at(piece.type) + inputColorIndexMap.at(piece.color);
+}
 
+Mat Abbie::modelInputFromBoard(Board& board) {
+   std::shared_ptr<Piece[]> state = board.getState();
+   Color currentPlayer = board.getCurrentPlayer();
+   bool white_oo = board.white_oo();
+   bool white_ooo = board.white_ooo();
+   bool black_oo = board.black_oo();
+   bool black_ooo = board.black_ooo();
    shared_ptr<float[]> model_input = make_unique<float[]>(INPUT_SIZE);
    memset(model_input.get(), 0, INPUT_SIZE*sizeof(float));
-
    for (int i = 0; i < 64; i++) {
       Piece piece = state[i];
       if (piece.type != BLANK_P) {
-         auto index = 
-               inputPieceIndexMap.at(piece.type) + 
-               inputColorIndexMap.at(piece.color);
+         auto index = pieceOffset(piece) + i;
          model_input[index] = 1;
       }
    }
+
+   unsigned after_pieces_index = INPUT_SIZE - OTHER_INPUTS;
+   // colour            1  (-1 for black, 1 for white)
+   // P1 castling       2
+   // P2 castling       2
+   model_input[after_pieces_index] = (currentPlayer == WHITE ? 1.f : -1.f);
+   model_input[after_pieces_index + 1] =  white_oo;
+   model_input[after_pieces_index + 2] =  white_ooo;
+   model_input[after_pieces_index + 3] =  black_oo;
+   model_input[after_pieces_index + 4] =  black_ooo;
+
    return Mat(INPUT_SIZE, 1, model_input);
 }
 
 Mat Abbie::modelInputFromFEN(string FEN)
 {
-   string FEN_pieces = FEN.substr(0, FEN.find(' '));
-   vector<string> rows{};
-   for (int i = 0; i < 6; i++)
-   {
-      rows.push_back(FEN_pieces.substr(0, FEN_pieces.find('/')));
-      FEN_pieces = FEN_pieces.substr(FEN_pieces.find('/') + 1, FEN_pieces.size() - 1);
-   }
-   rows.push_back(FEN_pieces);
-   char squares[NUM_SQUARES];
-   unsigned square = 0;
-   for (auto row : rows)
-   {
-      for (auto chr : row)
-      {
-         if (chr >= '1' && chr <= '8')
-         {
-            unsigned num_empty = chr - '0';
-            for (unsigned i = 0; i < num_empty; i++)
-            {
-               squares[square] = '-';
-               square++;
-            }
-         }
-         else
-         {
-            squares[square] = chr;
-            square++;
-         }
-      }
-   }
-
-   shared_ptr<float[]> model_input = make_unique<float[]>(INPUT_SIZE);
-   vector<char> pieces = {
-       'p', 'P', // pawn
-       'r', 'R', // rook
-       'n', 'N', // knight
-       'b', 'B', // bishop
-       'q', 'Q', // queen
-       'k', 'K'  // king
-   };
-
-   for (unsigned pc = 0; pc < NUM_PIECES; pc++)
-   {
-      for (unsigned sq = 0; sq < NUM_SQUARES; sq++)
-      {
-         float val = (pieces[pc] == squares[sq]) ? 1.f : 0.f;
-         model_input[pc * NUM_SQUARES + sq] = val;
-      }
-   }
-   return Mat(INPUT_SIZE, 1, model_input);
+   Board board(FEN);
+   return modelInputFromBoard(board);
 }
 
 float std_dev(float *input, unsigned len)
@@ -151,7 +114,7 @@ float std_dev(float *input, unsigned len)
    return sqrt(accum / (len - 1)) + 0.000001; // add small constant to std_dev in case all values are exactly the same
 }
 
-Move Abbie::getBotMove(Board& board, float &eval, int maxDepth, int initialDepth) {
+Move Abbie::getBotMove(Board& board, float &eval) {
    Board currentBoard(board);
    vector<Move> legalMoves = currentBoard.getLegalMoves();
    int num_moves = legalMoves.size();
@@ -169,11 +132,11 @@ Move Abbie::getBotMove(Board& board, float &eval, int maxDepth, int initialDepth
    float bestEval = (playingAsWhite ? negativeInf : positiveInf);
 
 
-   std::vector<std::shared_ptr<Piece[]>> moveStates;
+   std::vector<Mat> inputs;
    for (auto &move : legalMoves) {
       Board nextBoard(currentBoard);
       nextBoard.doMove(move);
-      moveStates.push_back(nextBoard.getState());
+      inputs.push_back(modelInputFromBoard(nextBoard));
       if (nextBoard.kingIsInCheck()) {
          if (nextBoard.getLegalMoves().size() == 0) {
             // always return mate in 1
@@ -182,7 +145,7 @@ Move Abbie::getBotMove(Board& board, float &eval, int maxDepth, int initialDepth
       }
    }
 
-   std::vector<float> evals = evaluateStates(moveStates);
+   std::vector<float> evals = evaluateInputs(inputs);
 
    for (int i = 0; i < legalMoves.size(); i++) {
       eval = evals[i];
@@ -200,10 +163,10 @@ Move Abbie::getBotMove(Board& board, float &eval, int maxDepth, int initialDepth
    return bestMove;
 }
 
-Move Abbie::getBotMove(string FEN, float &eval, int maxDepth, int initialDepth)
+Move Abbie::getBotMove(string FEN, float &eval)
 {
    Board currentBoard = Board(FEN);
-   return getBotMove(currentBoard, eval, maxDepth, initialDepth);
+   return getBotMove(currentBoard, eval);
 }
 
 void Abbie::playAgainst()
@@ -243,7 +206,7 @@ void Abbie::playAgainst()
          {
             string FEN = game.getFEN();
             float eval = 0.f;
-            Move botMove = getBotMove(FEN, eval, 2, 1);
+            Move botMove = getBotMove(FEN, eval);
             state = game.acceptMove(botMove);
             for (int i = 0; i < 9; i++)
             {
@@ -265,70 +228,44 @@ Mat Abbie::modelOutputFromVal(float val)
    return Mat(1, 1, output);
 }
 
-void Abbie::compute_W_B_fromStates (
-   std::vector<std::shared_ptr<Piece[]>> states,
+float Abbie::hindsightEvalAtState(   
+   float S,
+   float E,
+   unsigned N,
+   unsigned current
+   ) {
+   // half a cosine curve going between -1 and 1 (or just flat 0 if draw)
+   // Applies less weighting to the beginning states of a game and more to the end.
+   // interactive visualization of rating system:
+   // https://www.desmos.com/calculator/tqkv6yqygv
+   return E*(cos((M_PI*current)/N) - 1.f)/(2.0f);
+}
+
+void Abbie::compute_W_B_fromInputs (
+   std::vector<Mat> inputs,
    float S,
    float E,
    std::vector<Mat>& weightGrads,
    std::vector<Mat>& biasGrads)
 {
-   // S = starting eval (always 0.5)
-   // E = ending eval   (1 or 0 based on who won the game)
-   float N = states.size();
-
-   // half a cosine curve going between 0.5 and (0 or 1).
-   // Applies less weighting to the beginning states of a game and more to the end.
-   // interactive visualization of rating system:
-   // https://www.desmos.com/calculator/tqkv6yqygv
-   vector<Mat> inputs;
+   unsigned N = inputs.size();
    vector<Mat> outputs;
    for (int i = 0; i < N; i++) {
-      float eval = (1-2*E)*(cos((M_PI*i)/N) - 1.f)/(4.0f) + 0.5f;
+      float eval = hindsightEvalAtState(S, E, N, i);
       outputs.push_back(modelOutputFromVal(eval));
-      inputs.push_back(modelInputFromState(states[i]));
    }
 
    model_.multipleBackPropagate(inputs,outputs,weightGrads,biasGrads);
 }
 
-void Abbie::compute_W_B_forState(
-    vector<string>& FENs,
-    unsigned state,
-    float S,
-    float E,
+void Abbie::compute_W_B_fromInput(
+    Mat& input,
+    float eval,
     vector<Mat>& weightGrads,
     vector<Mat>& biasGrads)
 {
-   // S = starting eval (always 0.5)
-   // E = ending eval   (1 or 0 based on who won the game)
-   float N = FENs.size();
-
-   // half a cosine curve going between 0.5 and (0 or 1).
-   // Applies less weighting to the beginning states of a game and more to the end.
-   // interactive visualization of rating system:
-   // https://www.desmos.com/calculator/tqkv6yqygv
-   float eval_shouldBe = (1-2*E)*(cos((M_PI*state)/N) - 1.f)/(4.0f) + 0.5f;
-
-
-   Mat input = modelInputFromFEN(FENs[state]);
-   Mat output = modelOutputFromVal(eval_shouldBe);
-   vector<Mat> diffs;
-   vector<Mat> as;
-
-   model_.backPropagate(input, output, diffs, as);
-
-   auto nw = model_.computeWeights(diffs, as);
-   for (int w = 0; w < weightGrads.size(); w++)
-   {
-      auto newWeightGrad = weightGrads[w] + nw[w];
-      weightGrads[w] = newWeightGrad;
-   }
-   auto nb = model_.computeBiases(diffs);
-   for (int b = 0; b < biasGrads.size(); b++)
-   {
-      auto newBiasGrad = biasGrads[b] + nb[b];
-      biasGrads[b] = newBiasGrad;
-   }
+   Mat output = modelOutputFromVal(eval);
+   model_.backPropagate(input, output, weightGrads, biasGrads);
 }
 
 Move Abbie::getRandomMove(std::string FEN) {
@@ -353,44 +290,35 @@ Move Abbie::getRandomMove(std::string FEN) {
 
 void Abbie::trainOneGame()
 {
-   Chess game;
-   GameState gameState = ONGOING;
-   vector<std::shared_ptr<Piece[]>> states{};
-
-   auto thing = game.getBoardState();
-
-   std::cout << "turn 0\n";
-
-   bool whitePlaying = true;
-   int turnCount = 0;
-   while (gameState == ONGOING)
-   {
-      turnCount++;
-      std::cout << "\033[Fturn " << turnCount << "\n";
-      string FEN = game.getFEN();
-      states.push_back(game.getBoardState());
-      float eval;
-      std::uniform_int_distribution<int> uid(1,20);
-      Move move;
-      if (uid(rng_) == 1) {
-         // 5% chance of doing a random move
-         move = getRandomMove(FEN);
-      } else {
-         move = getBotMove(FEN, eval, 0, 0);
-      }
-
-      gameState = game.acceptMove(move);
-      whitePlaying = !whitePlaying;
-   }
-   states.push_back(game.getBoardState());
+   Board board;
+   std::vector<Mat> inputs;
+   inputs.push_back(modelInputFromBoard(board));
 
    float starting_eval = 0.5f;
    float ending_eval;
+
+   GameState gameState = ONGOING;
+
+   // play the game
+   while (gameState == ONGOING) {
+      float eval;
+      Move move = getBotMove(board, eval);
+      board.doMove(move);
+      inputs.push_back(modelInputFromBoard(board));
+      if (board.getLegalMoves().size() == 0) {
+         if (board.kingIsInCheck()) {
+            gameState == CHECKMATE;
+         } else {
+            gameState == DRAW;
+         }
+      }
+   }
+
    if (gameState == CHECKMATE)
    {
-      if (whitePlaying) {
+      if (board.getCurrentPlayer() == WHITE) {
          // white is playing but is in checkmate, black wins
-         ending_eval = 0.f;
+         ending_eval = -1.f;
       } else {
          // black is playing but is in checkmate, white wins
          ending_eval = 1.f;
@@ -399,17 +327,12 @@ void Abbie::trainOneGame()
    else
    {
       // draw
-      ending_eval = 0.5f;
+      ending_eval = 0.0f;
    }
 
    vector<Mat> weightGrads;
    vector<Mat> biasGrads;
 
-   std::cout << "Game was " << states.size() - 1 << " moves long\n";
-   std::cout << "Computing weight and bias gradients\n";
-
-   compute_W_B_fromStates(states, starting_eval, ending_eval, weightGrads, biasGrads);
-
-   std::cout << "Adjusting weights and biases\n";
-   model_.adjustWeightsAndBiases(weightGrads, biasGrads, 0.03, states.size());
+   compute_W_B_fromInputs(inputs, starting_eval, ending_eval, weightGrads, biasGrads);
+   model_.adjustWeightsAndBiases(weightGrads, biasGrads, 0.03, inputs.size());
 }
