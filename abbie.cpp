@@ -307,9 +307,9 @@ void Abbie::trainOneGame()
       inputs.push_back(modelInputFromBoard(board));
       if (board.getLegalMoves().size() == 0) {
          if (board.kingIsInCheck()) {
-            gameState == CHECKMATE;
+            gameState = CHECKMATE;
          } else {
-            gameState == DRAW;
+            gameState = DRAW;
          }
       }
    }
