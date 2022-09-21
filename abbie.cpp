@@ -296,16 +296,22 @@ void Abbie::trainOneGame()
 
    float starting_eval = 0.5f;
    float ending_eval;
+   int moveCount = 0;
 
    GameState gameState = ONGOING;
 
    // play the game
    while (gameState == ONGOING) {
+      std::cout << "\033[F\33[2KMove " << moveCount << "\n";
       float eval;
       Move move = getBotMove(board, eval);
+      moveCount++;
       board.doMove(move);
       inputs.push_back(modelInputFromBoard(board));
-      if (board.getLegalMoves().size() == 0) {
+      if(board.GameIsDraw()) {
+         gameState = DRAW;
+      }
+      else if (board.getLegalMoves().size() == 0) {
          if (board.kingIsInCheck()) {
             gameState = CHECKMATE;
          } else {
