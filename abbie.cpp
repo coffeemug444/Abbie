@@ -238,7 +238,7 @@ float Abbie::hindsightEvalAtState(
    // Applies less weighting to the beginning states of a game and more to the end.
    // interactive visualization of rating system:
    // https://www.desmos.com/calculator/tqkv6yqygv
-   return E*(cos((M_PI*current)/N) - 1.f)/(2.0f);
+   return E*(1.f-cos((M_PI*current)/N))/(2.0f);
 }
 
 void Abbie::compute_W_B_fromInputs (
