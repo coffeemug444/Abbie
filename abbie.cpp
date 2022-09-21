@@ -255,7 +255,28 @@ void Abbie::compute_W_B_fromInputs (
       outputs.push_back(modelOutputFromVal(eval));
    }
 
-   model_.multipleBackPropagate(inputs,outputs,weightGrads,biasGrads);
+   if (N > 200) {
+      // BenMat has trouble with very large matrix operations
+      // split the load in half for everything to go well
+      std::vector<Mat> nw;
+      std::vector<Mat> nb;
+
+      vector<Mat> inputs_first_half(begin(inputs), begin(inputs) + N/2);
+      vector<Mat> outputs_first_half(begin(outputs), begin(outputs) + N/2);
+
+      vector<Mat> inputs_second_half(begin(inputs) +  N/2 + 1, end(inputs));
+      vector<Mat> outputs_second_half(begin(outputs) +  N/2 + 1, end(outputs));
+
+      model_.multipleBackPropagate(inputs_first_half,outputs_first_half,weightGrads,biasGrads);
+      model_.multipleBackPropagate(inputs_second_half,outputs_second_half,nw,nb);
+
+      for (int i = 0; i < nw.size(); i++) {
+         weightGrads[i] = weightGrads[i] + nw[i];
+         biasGrads[i] = biasGrads[i] + nb[i];
+      }
+   } else {
+      model_.multipleBackPropagate(inputs,outputs,weightGrads,biasGrads);
+   }
 }
 
 void Abbie::compute_W_B_fromInput(
@@ -268,11 +289,10 @@ void Abbie::compute_W_B_fromInput(
    model_.backPropagate(input, output, weightGrads, biasGrads);
 }
 
-Move Abbie::getRandomMove(std::string FEN) {
+Move Abbie::getRandomMove(Board& board) {
    // returns a "random" move. If it sees it can get
    // mate in 1 then it will return that move, otherwise
    // pick from current legal moves
-   Board board(FEN);
    std::vector<Move> legalMoves = board.getLegalMoves();
    for (auto & legalMove : legalMoves) {
       Board newBoard(board);
@@ -304,7 +324,14 @@ void Abbie::trainOneGame()
    while (gameState == ONGOING) {
       std::cout << "\033[F\33[2KMove " << moveCount << "\n";
       float eval;
-      Move move = getBotMove(board, eval);
+      std::uniform_int_distribution<int> uid(1, 100);
+      Move move;
+      if (uid(rng_) <= 5) {
+         // 5% chance of performing a random move
+         move = getRandomMove(board);
+      } else {
+         move = getBotMove(board, eval);
+      }
       moveCount++;
       board.doMove(move);
       inputs.push_back(modelInputFromBoard(board));

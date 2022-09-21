@@ -55,7 +55,7 @@ private:
       std::vector<Mat>& biasGrads
    );
    
-   Move getRandomMove(std::string FEN);
+   Move getRandomMove(Board& board);
    Move getBotMove(Board& board, float &eval);
 
 public:
