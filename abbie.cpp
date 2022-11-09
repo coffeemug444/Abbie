@@ -9,43 +9,31 @@ using std::chrono::system_clock,
     std::this_thread::sleep_for,
     std::cin, std::cout,
     std::string,
-    std::shared_ptr, std::make_shared, std::make_unique,
     std::vector,
     std::future;
 
 Abbie::Abbie()
 {
-   rng_ = std::mt19937(dev_());
-   model_ = BenBrain({INPUT_SIZE, 2048, 2048, 1}, 'h');
+   m_rng = std::mt19937(m_dev());
+   m_model = BenBrain({INPUT_SIZE, 2048, 2048, 1}, 'h');
 }
 
-Abbie::Abbie(std::string modelPath)
+Abbie::Abbie(std::string model_path)
 {
-   rng_ = std::mt19937(dev_());
-   model_ = BenBrain(modelPath);
+   m_rng = std::mt19937(m_dev());
+   m_model = BenBrain(model_path);
 }
 
-void Abbie::saveModel(std::string savePath)
-{
-   model_.save(savePath);
-}
-
-std::vector<float> Abbie::evaluateInputs(std::vector<Mat> inputs) {
-   Mat outputs = model_.multipleCompute(inputs);
-   std::shared_ptr<float[]> outVals = outputs.getVals();
-   return std::vector<float>(outVals.get(), outVals.get() + outputs.getHeight());
-}
-
-float Abbie::evaluateFEN(string FEN)
+float Abbie::evaluateFEN(string FEN) const
 {
    Mat input = modelInputFromFEN(FEN);
-   Mat output = model_.compute(input);
+   Mat output = m_model.compute(input);
    float outval = output.getVal(0, 0);
    return outval;
 }
 
 unsigned pieceOffset(Piece piece) {
-   static const std::map<PieceType, unsigned> inputPieceIndexMap {
+   static const std::map<PieceType, unsigned> input_piece_index_map {
       {PAWN, 0*2*64},
       {ROOK, 1*2*64},
       {KNIGHT, 2*2*64},
@@ -53,22 +41,22 @@ unsigned pieceOffset(Piece piece) {
       {QUEEN, 4*2*64},
       {KING, 5*2*64}
    };
-   static const std::map<Color, unsigned> inputColorIndexMap {
+   static const std::map<Color, unsigned> input_color_index_map {
       {BLACK, 0},
       {WHITE, 64}
    };
-   return inputPieceIndexMap.at(piece.type) + inputColorIndexMap.at(piece.color);
+   return input_piece_index_map.at(piece.type) + input_color_index_map.at(piece.color);
 }
 
 Mat Abbie::modelInputFromBoard(Board& board) {
-   std::shared_ptr<Piece[]> state = board.getState();
-   Color currentPlayer = board.getCurrentPlayer();
+   std::vector<Piece> state = board.getState();
+   Color current_player = board.getCurrentPlayer();
    bool white_oo = board.white_oo();
    bool white_ooo = board.white_ooo();
    bool black_oo = board.black_oo();
    bool black_ooo = board.black_ooo();
-   shared_ptr<float[]> model_input = make_unique<float[]>(INPUT_SIZE);
-   memset(model_input.get(), 0, INPUT_SIZE*sizeof(float));
+   vector<float> model_input(INPUT_SIZE);
+   std::fill(begin(model_input), end(model_input), 0);
    for (int i = 0; i < 64; i++) {
       Piece piece = state[i];
       if (piece.type != BLANK_P) {
@@ -81,7 +69,7 @@ Mat Abbie::modelInputFromBoard(Board& board) {
    // colour            1  (-1 for black, 1 for white)
    // P1 castling       2
    // P2 castling       2
-   model_input[after_pieces_index] = (currentPlayer == WHITE ? 1.f : -1.f);
+   model_input[after_pieces_index] = (current_player == WHITE ? 1.f : -1.f);
    model_input[after_pieces_index + 1] =  white_oo;
    model_input[after_pieces_index + 2] =  white_ooo;
    model_input[after_pieces_index + 3] =  black_oo;
@@ -96,49 +84,31 @@ Mat Abbie::modelInputFromFEN(string FEN)
    return modelInputFromBoard(board);
 }
 
-float std_dev(float *input, unsigned len)
-{
-   float sum = 0;
-   for (unsigned i = 0; i < len; i++)
-   {
-      sum += input[i];
-   }
-   float m = sum / len;
-
-   float accum = 0.0;
-   for (unsigned i = 0; i < len; i++)
-   {
-      accum += (input[i] - m) * (input[i] - m);
-   }
-
-   return sqrt(accum / (len - 1)) + 0.000001; // add small constant to std_dev in case all values are exactly the same
-}
-
 Move Abbie::getBotMove(Board& board, float &eval) {
-   Board currentBoard(board);
-   vector<Move> legalMoves = currentBoard.getLegalMoves();
-   int num_moves = legalMoves.size();
+   Board current_board(board);
+   vector<Move> legal_moves = current_board.getLegalMoves();
+   int num_moves = legal_moves.size();
    assert(num_moves != 0);
    if (num_moves == 1)
    {
-      return legalMoves[0];
+      return legal_moves[0];
    }
 
-   bool playingAsWhite = currentBoard.getCurrentPlayer() == WHITE;
+   bool playing_as_white = current_board.getCurrentPlayer() == WHITE;
 
-   Move bestMove;
-   float negativeInf = - std::numeric_limits<double>::infinity();
-   float positiveInf =   std::numeric_limits<double>::infinity();
-   float bestEval = (playingAsWhite ? negativeInf : positiveInf);
+   Move best_move;
+   const float negative_inf = - std::numeric_limits<double>::infinity();
+   const float positive_inf =   std::numeric_limits<double>::infinity();
+   float best_eval = (playing_as_white ? negative_inf : positive_inf);
 
 
    std::vector<Mat> inputs;
-   for (auto &move : legalMoves) {
-      Board nextBoard(currentBoard);
-      nextBoard.doMove(move);
-      inputs.push_back(modelInputFromBoard(nextBoard));
-      if (nextBoard.kingIsInCheck()) {
-         if (nextBoard.getLegalMoves().size() == 0) {
+   for (auto &move : legal_moves) {
+      Board next_board(current_board);
+      next_board.doMove(move);
+      inputs.push_back(modelInputFromBoard(next_board));
+      if (next_board.kingIsInCheck()) {
+         if (next_board.getLegalMoves().size() == 0) {
             // always return mate in 1
             return move;
          }
@@ -147,32 +117,32 @@ Move Abbie::getBotMove(Board& board, float &eval) {
 
    std::vector<float> evals = evaluateInputs(inputs);
 
-   for (int i = 0; i < legalMoves.size(); i++) {
+   for (int i = 0; i < legal_moves.size(); i++) {
       eval = evals[i];
-      if (playingAsWhite && eval > bestEval) {
-         bestEval = eval;
-         bestMove = legalMoves[i];
+      if (playing_as_white && eval > best_eval) {
+         best_eval = eval;
+         best_move = legal_moves[i];
       }
-      if (!playingAsWhite && eval < bestEval) {
-         bestEval = eval;
-         bestMove = legalMoves[i];
+      if (!playing_as_white && eval < best_eval) {
+         best_eval = eval;
+         best_move = legal_moves[i];
       }
    }
    
-   eval = bestEval;
-   return bestMove;
+   eval = best_eval;
+   return best_move;
 }
 
 Move Abbie::getBotMove(string FEN, float &eval)
 {
-   Board currentBoard = Board(FEN);
-   return getBotMove(currentBoard, eval);
+   Board current_board = Board(FEN);
+   return getBotMove(current_board, eval);
 }
 
 void Abbie::playAgainst()
 {
    Chess game;
-   game.printBoard();
+   std::cout << game;
    GameState state = ONGOING;
 
    cout << "\n\033[A";
@@ -201,31 +171,24 @@ void Abbie::playAgainst()
             // clear line and move up
             cout << "\33[2k\033[A\r";
          }
-         game.printBoard();
+         std::cout << game;
          if (state == ONGOING)
          {
             string FEN = game.getFEN();
             float eval = 0.f;
-            Move botMove = getBotMove(FEN, eval);
-            state = game.acceptMove(botMove);
+            Move bot_move = getBotMove(FEN, eval);
+            state = game.acceptMove(bot_move);
             for (int i = 0; i < 9; i++)
             {
                // clear line and move up
                cout << "\33[2k\033[A\r";
             }
-            game.printBoard();
+            std::cout << game;
             cout << "\r                                                        \r";
             cout << "Board was rated " << eval << ". Enter move: ";
          }
       }
    }
-}
-
-Mat Abbie::modelOutputFromVal(float val)
-{
-   shared_ptr<float[]> output = make_unique<float[]>(1);
-   output[0] = val;
-   return Mat(1, 1, output);
 }
 
 float Abbie::hindsightEvalAtState(   
@@ -245,8 +208,8 @@ void Abbie::compute_W_B_fromInputs (
    std::vector<Mat> inputs,
    float S,
    float E,
-   std::vector<Mat>& weightGrads,
-   std::vector<Mat>& biasGrads)
+   std::vector<Mat>& weight_grads,
+   std::vector<Mat>& bias_grads)
 {
    unsigned N = inputs.size();
    vector<Mat> outputs;
@@ -267,45 +230,45 @@ void Abbie::compute_W_B_fromInputs (
       vector<Mat> inputs_second_half(begin(inputs) +  N/2 + 1, end(inputs));
       vector<Mat> outputs_second_half(begin(outputs) +  N/2 + 1, end(outputs));
 
-      model_.multipleBackPropagate(inputs_first_half,outputs_first_half,weightGrads,biasGrads);
-      model_.multipleBackPropagate(inputs_second_half,outputs_second_half,nw,nb);
+      m_model.multipleBackPropagate(inputs_first_half,outputs_first_half,weight_grads,bias_grads);
+      m_model.multipleBackPropagate(inputs_second_half,outputs_second_half,nw,nb);
 
       for (int i = 0; i < nw.size(); i++) {
-         weightGrads[i] = weightGrads[i] + nw[i];
-         biasGrads[i] = biasGrads[i] + nb[i];
+         weight_grads[i] = weight_grads[i] + nw[i];
+         bias_grads[i] = bias_grads[i] + nb[i];
       }
    } else {
-      model_.multipleBackPropagate(inputs,outputs,weightGrads,biasGrads);
+      m_model.multipleBackPropagate(inputs,outputs,weight_grads,bias_grads);
    }
 }
 
 void Abbie::compute_W_B_fromInput(
     Mat& input,
     float eval,
-    vector<Mat>& weightGrads,
-    vector<Mat>& biasGrads)
+    vector<Mat>& weight_grads,
+    vector<Mat>& bias_grads)
 {
    Mat output = modelOutputFromVal(eval);
-   model_.backPropagate(input, output, weightGrads, biasGrads);
+   m_model.backPropagate(input, output, weight_grads, bias_grads);
 }
 
 Move Abbie::getRandomMove(Board& board) {
    // returns a "random" move. If it sees it can get
    // mate in 1 then it will return that move, otherwise
    // pick from current legal moves
-   std::vector<Move> legalMoves = board.getLegalMoves();
-   for (auto & legalMove : legalMoves) {
-      Board newBoard(board);
-      newBoard.doMove(legalMove);
-      auto remainingMoves = newBoard.getLegalMoves();
+   std::vector<Move> legal_moves = board.getLegalMoves();
+   for (auto & move : legal_moves) {
+      Board new_board(board);
+      new_board.doMove(move);
+      auto remainingMoves = new_board.getLegalMoves();
       if (remainingMoves.size() == 0) {
-         if (newBoard.kingIsInCheck()) {
-            return legalMove;
+         if (new_board.kingIsInCheck()) {
+            return move;
          }
       }
    }
-   std::uniform_int_distribution<int> uid(0, legalMoves.size() - 1);
-   return legalMoves[uid(rng_)];
+   std::uniform_int_distribution<int> uid(0, legal_moves.size() - 1);
+   return legal_moves[uid(m_rng)];
 }
 
 void Abbie::trainOneGame()
@@ -316,38 +279,38 @@ void Abbie::trainOneGame()
 
    float starting_eval = 0.5f;
    float ending_eval;
-   int moveCount = 0;
+   int move_count = 0;
 
-   GameState gameState = ONGOING;
+   GameState game_state = ONGOING;
 
    // play the game
-   while (gameState == ONGOING) {
-      std::cout << "\033[F\33[2KMove " << moveCount << "\n";
+   while (game_state == ONGOING) {
+      std::cout << "\033[F\33[2KMove " << move_count << "\n";
       float eval;
       std::uniform_int_distribution<int> uid(1, 100);
       Move move;
-      if (uid(rng_) <= 5) {
+      if (uid(m_rng) <= 5) {
          // 5% chance of performing a random move
          move = getRandomMove(board);
       } else {
          move = getBotMove(board, eval);
       }
-      moveCount++;
+      move_count++;
       board.doMove(move);
       inputs.push_back(modelInputFromBoard(board));
       if(board.GameIsDraw()) {
-         gameState = DRAW;
+         game_state = DRAW;
       }
       else if (board.getLegalMoves().size() == 0) {
          if (board.kingIsInCheck()) {
-            gameState = CHECKMATE;
+            game_state = CHECKMATE;
          } else {
-            gameState = DRAW;
+            game_state = DRAW;
          }
       }
    }
 
-   if (gameState == CHECKMATE)
+   if (game_state == CHECKMATE)
    {
       if (board.getCurrentPlayer() == WHITE) {
          // white is playing but is in checkmate, black wins
@@ -363,9 +326,9 @@ void Abbie::trainOneGame()
       ending_eval = 0.0f;
    }
 
-   vector<Mat> weightGrads;
-   vector<Mat> biasGrads;
+   vector<Mat> weight_grads;
+   vector<Mat> bias_grads;
 
-   compute_W_B_fromInputs(inputs, starting_eval, ending_eval, weightGrads, biasGrads);
-   model_.adjustWeightsAndBiases(weightGrads, biasGrads, 0.03, inputs.size());
+   compute_W_B_fromInputs(inputs, starting_eval, ending_eval, weight_grads, bias_grads);
+   m_model.adjustWeightsAndBiases(weight_grads, bias_grads, 0.03, inputs.size());
 }
